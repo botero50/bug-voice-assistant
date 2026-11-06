@@ -6,8 +6,12 @@
 static const char *TAG = "UI_CORE";
 static ui_context_t ui_ctx = {0};
 
-// Littlevgl theme and styles
-static lv_theme_t *theme_dark = NULL;
+const lv_font_t *font_large = NULL;
+const lv_font_t *font_heading = NULL;
+const lv_font_t *font_body = NULL;
+const lv_font_t *font_small = NULL;
+
+// LVGL styles
 static lv_style_t style_bg_dark;
 static lv_style_t style_text_primary;
 static lv_style_t style_text_secondary;
@@ -39,8 +43,8 @@ void ui_init(void) {
     ui_init_fonts();
 
     // Create dark theme
-    theme_dark = lv_theme_dark_init(COLOR_BG_DARK, COLOR_TEXT_PRIMARY);
-    lv_theme_set_current(theme_dark);
+    lv_disp_t *disp = lv_disp_get_default();
+    lv_disp_set_theme(disp, lv_theme_default_init(disp, COLOR_ACCENT_GREEN, COLOR_ACCENT_BLUE, true, font_body));
 
     // Initialize styles
     ui_init_styles();
@@ -63,11 +67,6 @@ void ui_init(void) {
 }
 
 void ui_deinit(void) {
-    // Clean up theme and styles
-    if (theme_dark) {
-        lv_theme_delete(theme_dark);
-        theme_dark = NULL;
-    }
     ESP_LOGI(TAG, "UI deinitialized");
 }
 
@@ -143,7 +142,7 @@ static void ui_clip_circular_display(void) {
 
     // For simplicity, we'll manually clip in object creation
     // Set maximum width and height and rely on overflow hidden
-    lv_obj_set_overflow(ui_ctx.root_screen, LV_OVERFLOW_HIDDEN);
+    lv_obj_clear_flag(ui_ctx.root_screen, LV_OBJ_FLAG_SCROLLABLE);
 
     // Note: LVG doesn't have native circular clipping
     // We'll handle this by:
@@ -163,17 +162,18 @@ static void ui_create_status_bar(void) {
     lv_obj_set_size(ui_ctx.status_bar, 400, 30);
     lv_obj_set_pos(ui_ctx.status_bar, 33, 5);  // Centered horizontally
     lv_obj_add_style(ui_ctx.status_bar, &style_status_bar, 0);
+    lv_obj_clear_flag(ui_ctx.status_bar, LV_OBJ_FLAG_SCROLLABLE);
 
     // Time label (left)
     lv_obj_t *time_label = lv_label_create(ui_ctx.status_bar);
-    lv_label_set_text(time_label, "3:45");
+    lv_label_set_text(time_label, "--:--");
     lv_obj_set_pos(time_label, 5, 5);
     lv_obj_add_style(time_label, &style_text_primary, 0);
     lv_obj_set_style_text_font(time_label, font_heading, 0);
 
     // Battery label (right)
     lv_obj_t *battery_label = lv_label_create(ui_ctx.status_bar);
-    lv_label_set_text(battery_label, "100%");
+    lv_label_set_text(battery_label, "--%");
     lv_obj_set_pos(battery_label, 340, 5);
     lv_obj_add_style(battery_label, &style_text_secondary, 0);
 
@@ -192,13 +192,11 @@ void ui_set_screen(screen_state_t screen) {
 
     // Clear main content area (keep status bar)
     // Iterate through children and remove non-status-bar objects
-    lv_obj_t *child = lv_obj_get_child(ui_ctx.root_screen, NULL);
-    while (child != NULL) {
-        lv_obj_t *next = lv_obj_get_child(ui_ctx.root_screen, child);
+    for (int i = (int)lv_obj_get_child_cnt(ui_ctx.root_screen) - 1; i >= 0; i--) {
+        lv_obj_t *child = lv_obj_get_child(ui_ctx.root_screen, i);
         if (child != ui_ctx.status_bar && child != ui_ctx.bottom_nav) {
             lv_obj_del(child);
         }
-        child = next;
     }
 
     ui_ctx.current_screen = screen;
@@ -286,25 +284,4 @@ void ui_show_voice_feedback(voice_state_t state, const char *text) {
     if (ui_ctx.center_label && text) {
         lv_label_set_text(ui_ctx.center_label, text);
     }
-}
-
-// Stub implementations for screen creation (detailed in next files)
-lv_obj_t *ui_create_home_screen(void) {
-    ESP_LOGI(TAG, "Creating home screen");
-    return ui_ctx.root_screen;
-}
-
-lv_obj_t *ui_create_email_list_screen(void) {
-    ESP_LOGI(TAG, "Creating email list screen");
-    return ui_ctx.root_screen;
-}
-
-lv_obj_t *ui_create_calendar_screen(void) {
-    ESP_LOGI(TAG, "Creating calendar screen");
-    return ui_ctx.root_screen;
-}
-
-lv_obj_t *ui_create_settings_screen(void) {
-    ESP_LOGI(TAG, "Creating settings screen");
-    return ui_ctx.root_screen;
 }

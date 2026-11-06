@@ -1,4 +1,6 @@
+#include <stdbool.h>
 #include <stdio.h>
+#include "lvgl.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
@@ -55,10 +57,10 @@ void app_main(void) {
     // Initialize audio driver
     ESP_LOGI(TAG, "Initializing audio driver...");
     if (audio_init(AUDIO_DIR_DUPLEX) != ESP_OK) {
-        ESP_LOGE(TAG, "✗ Audio initialization failed");
-        esp_restart();
+        ESP_LOGE(TAG, "✗ Audio initialization failed - continuing without audio");
+    } else {
+        ESP_LOGI(TAG, "✓ Audio driver ready");
     }
-    ESP_LOGI(TAG, "✓ Audio driver ready");
 
     // Initialize circular audio buffer
     audio_circular_buffer_init();
@@ -99,16 +101,17 @@ void app_main(void) {
 
     // Initialize display driver (AMOLED + touch)
     ESP_LOGI(TAG, "Initializing display driver...");
-    if (display_init() != ESP_OK) {
-        ESP_LOGE(TAG, "✗ Display initialization failed");
-        esp_restart();
-    }
-    ESP_LOGI(TAG, "✓ Display driver ready");
+    bool display_ready = display_init() == ESP_OK;
+    if (display_ready) {
+        ESP_LOGI(TAG, "✓ Display driver ready");
 
-    // Initialize UI (Littlevgl for 466x466 circular AMOLED display)
-    ESP_LOGI(TAG, "Initializing UI system...");
-    ui_init();
-    ESP_LOGI(TAG, "✓ UI system ready (dark theme, 466x466 circular AMOLED)");
+        // Initialize UI (LVGL for 466x466 circular AMOLED display)
+        ESP_LOGI(TAG, "Initializing UI system...");
+        ui_init();
+        ESP_LOGI(TAG, "✓ UI system ready (dark theme, 466x466 circular AMOLED)");
+    } else {
+        ESP_LOGE(TAG, "✗ Display initialization failed - continuing without screen");
+    }
 
     // Initialize power manager
     ESP_LOGI(TAG, "Initializing power management...");
@@ -149,31 +152,24 @@ void app_main(void) {
     voice_loop_init();
     ESP_LOGI(TAG, "✓ Voice loop ready");
 
-    ESP_LOGI(TAG, "\n╔═══════════════════════════════════════════════╗");
-    ESP_LOGI(TAG, "║  🎤 Bug is ready to listen!                 ║");
-    ESP_LOGI(TAG, "║  Mode: ALWAYS_LISTENING (8-12mA)            ║");
-    ESP_LOGI(TAG, "║  Display: Dark theme (#121212, 30-58% power)║");
-    ESP_LOGI(TAG, "║  Battery: ~8-14 days per 2000mAh charge     ║");
-    ESP_LOGI(TAG, "║  Say \"Hola Bug\" for hands-free activation   ║");
-    ESP_LOGI(TAG, "║  Multi-user support: YES (speaker ID)       ║");
-    ESP_LOGI(TAG, "║  Processing: STT → Speaker ID → LLM → TTS   ║");
-    ESP_LOGI(TAG, "║  Power Profiles: Always, Periodic, Gesture   ║");
-    ESP_LOGI(TAG, "╚═══════════════════════════════════════════════╝\n");
+    ESP_LOGI(TAG, "Bug preview firmware started: voice features are not active yet");
 
     // Main event loop
     int capture_count = 0;
     uint32_t idle_start_time = xTaskGetTickCount();
-    int last_idle_reported = 0;
 
     while (1) {
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        if (display_ready) {
+            lv_timer_handler();
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
 
         // Monitor idle time and switch to periodic listening
-        uint32_t idle_duration_ms = xTaskGetTickCount() - idle_start_time;
+        uint32_t idle_duration_ms = pdTICKS_TO_MS(xTaskGetTickCount() - idle_start_time);
         power_profile_manager_notify_idle(idle_duration_ms);
 
-        // Periodic logging and power monitoring
-        if (capture_count++ % 200 == 0) {
+        // Periodic logging and power monitoring (about every 20 seconds)
+        if (capture_count++ % 2000 == 0) {
             PowerState power_state = power_optimizer_get_state();
             VADState vad_state = vad_get_state();
 

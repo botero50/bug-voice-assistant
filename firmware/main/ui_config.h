@@ -35,10 +35,10 @@
 #define ANIM_WAVEFORM_REFRESH 50
 
 // Fonts (will be configured at runtime)
-extern lv_font_t *font_large;   // 28px
-extern lv_font_t *font_heading; // 20px
-extern lv_font_t *font_body;    // 16px
-extern lv_font_t *font_small;   // 12px
+extern const lv_font_t *font_large;   // 28px
+extern const lv_font_t *font_heading; // 20px
+extern const lv_font_t *font_body;    // 16px
+extern const lv_font_t *font_small;   // 12px
 
 // UI layer enumeration
 typedef enum {

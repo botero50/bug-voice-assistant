@@ -10,57 +10,55 @@ static i2s_chan_handle_t tx_handle = NULL;
 static i2s_chan_handle_t rx_handle = NULL;
 static uint8_t current_volume = 100;
 
-// GPIO Definitions for ESP32-S3 DevKit
-#define I2S_MCK 0    // Master clock
-#define I2S_RX_SCK 10  // Mic serial clock
-#define I2S_RX_WS 11   // Mic word select
-#define I2S_RX_SD 12   // Mic serial data (INMP441)
-
-#define I2S_TX_SCK 8   // Speaker serial clock
-#define I2S_TX_WS 7    // Speaker word select
-#define I2S_TX_SD 6    // Speaker serial data
+// I2S pins to the board's ES8311 codec (same map as TamaPoke's pin_config.h).
+// The codec itself still needs configuring over I2C before audio will work.
+#define I2S_PIN_MCLK 42
+#define I2S_PIN_BCLK 9
+#define I2S_PIN_WS 45
+#define I2S_PIN_DOUT 8
+#define I2S_PIN_DIN 10
 
 esp_err_t audio_init(AudioDirection direction) {
     ESP_LOGI(TAG, "Initializing I2S audio (direction=%d)...", direction);
 
+    bool use_rx = direction == AUDIO_DIR_IN || direction == AUDIO_DIR_DUPLEX;
+    bool use_tx = direction == AUDIO_DIR_OUT || direction == AUDIO_DIR_DUPLEX;
+
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;
+
+    esp_err_t ret = i2s_new_channel(&chan_cfg, use_tx ? &tx_handle : NULL, use_rx ? &rx_handle : NULL);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create I2S channels: %s", esp_err_to_name(ret));
+        return ret;
+    }
 
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(16000),  // 16kHz sample rate
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,
-            .bclk = (direction == AUDIO_DIR_IN || direction == AUDIO_DIR_DUPLEX) ? I2S_RX_SCK : I2S_TX_SCK,
-            .ws = (direction == AUDIO_DIR_IN || direction == AUDIO_DIR_DUPLEX) ? I2S_RX_WS : I2S_TX_WS,
-            .dout = (direction == AUDIO_DIR_OUT || direction == AUDIO_DIR_DUPLEX) ? I2S_TX_SD : I2S_GPIO_UNUSED,
-            .din = (direction == AUDIO_DIR_IN || direction == AUDIO_DIR_DUPLEX) ? I2S_RX_SD : I2S_GPIO_UNUSED,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
-            },
+            .mclk = I2S_PIN_MCLK,
+            .bclk = I2S_PIN_BCLK,
+            .ws = I2S_PIN_WS,
+            .dout = use_tx ? I2S_PIN_DOUT : I2S_GPIO_UNUSED,
+            .din = use_rx ? I2S_PIN_DIN : I2S_GPIO_UNUSED,
         },
     };
 
-    // Initialize RX channel (microphone input)
-    if (direction == AUDIO_DIR_IN || direction == AUDIO_DIR_DUPLEX) {
-        esp_err_t ret = i2s_new_std_rx_channel(&chan_cfg, &std_cfg, NULL, &rx_handle);
+    if (use_rx) {
+        ret = i2s_channel_init_std_mode(rx_handle, &std_cfg);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize RX channel: %s", esp_err_to_name(ret));
             return ret;
         }
-        ESP_LOGI(TAG, "✓ RX (microphone) channel initialized");
     }
 
-    // Initialize TX channel (speaker output)
-    if (direction == AUDIO_DIR_OUT || direction == AUDIO_DIR_DUPLEX) {
-        esp_err_t ret = i2s_new_std_tx_channel(&chan_cfg, &std_cfg, NULL, &tx_handle);
+    if (use_tx) {
+        ret = i2s_channel_init_std_mode(tx_handle, &std_cfg);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize TX channel: %s", esp_err_to_name(ret));
             return ret;
         }
-        ESP_LOGI(TAG, "✓ TX (speaker) channel initialized");
     }
 
     ESP_LOGI(TAG, "✓ Audio driver ready (16kHz, 16-bit, mono)");

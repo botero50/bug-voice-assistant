@@ -36,6 +36,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_set_pos(container, 43, 50);  // Centered (466-380)/2 + 30 for status bar
     lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);  // Transparent
     lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
+    lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE);
 
     // Listening ring (outer circle)
     // Outer ring: 160px diameter
@@ -59,13 +60,13 @@ lv_obj_t *ui_create_home_screen(void) {
 
     // Microphone icon/text in center
     lv_obj_t *mic_label = lv_label_create(ring_inner);
-    lv_label_set_text(mic_label, "🎤");
+    lv_label_set_text(mic_label, LV_SYMBOL_AUDIO);
     lv_obj_align(mic_label, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_text_font(mic_label, &lv_font_montserrat_28, 0);
 
     // Listening status text (below ring)
     lv_obj_t *status_label = lv_label_create(container);
-    lv_label_set_text(status_label, "Listening");
+    lv_label_set_text(status_label, "Bug preview");
     lv_obj_align(status_label, LV_ALIGN_CENTER, 0, 70);
     lv_obj_set_style_text_color(status_label, COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, 0);
@@ -77,6 +78,8 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_align(nav_container, LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_set_style_bg_opa(nav_container, LV_OPA_0, 0);
     lv_obj_set_style_border_opa(nav_container, LV_OPA_0, 0);
+    lv_obj_set_style_pad_all(nav_container, 0, 0);
+    lv_obj_clear_flag(nav_container, LV_OBJ_FLAG_SCROLLABLE);
 
     // Previous button
     lv_obj_t *btn_prev = lv_btn_create(nav_container);
@@ -89,7 +92,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_set_style_radius(btn_prev, LV_RADIUS_CIRCLE, 0);
 
     lv_obj_t *label_prev = lv_label_create(btn_prev);
-    lv_label_set_text(label_prev, "◀");
+    lv_label_set_text(label_prev, LV_SYMBOL_LEFT);
     lv_obj_center(label_prev);
     lv_obj_set_style_text_color(label_prev, COLOR_TEXT_SECONDARY, 0);
 
@@ -104,7 +107,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_set_style_radius(btn_home, LV_RADIUS_CIRCLE, 0);
 
     lv_obj_t *label_home = lv_label_create(btn_home);
-    lv_label_set_text(label_home, "◉");
+    lv_label_set_text(label_home, LV_SYMBOL_HOME);
     lv_obj_center(label_home);
     lv_obj_set_style_text_color(label_home, COLOR_ACCENT_GREEN, 0);
 
@@ -119,7 +122,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_set_style_radius(btn_next, LV_RADIUS_CIRCLE, 0);
 
     lv_obj_t *label_next = lv_label_create(btn_next);
-    lv_label_set_text(label_next, "▶");
+    lv_label_set_text(label_next, LV_SYMBOL_RIGHT);
     lv_obj_center(label_next);
     lv_obj_set_style_text_color(label_next, COLOR_TEXT_SECONDARY, 0);
 

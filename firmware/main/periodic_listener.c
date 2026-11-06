@@ -47,7 +47,7 @@ static void periodic_listener_task(void *pvParameters) {
                 listener_state.listening = 1;
                 listener_state.listen_start_time = xTaskGetTickCount();
 
-                audio_enable_input();
+                audio_start_recording();
                 power_manager_set_mode(POWER_MODE_ACTIVE);
 
                 ESP_LOGD(TAG, "Periodic listening: ON (cycle %u)", listener_state.cycles_completed);
@@ -58,8 +58,8 @@ static void periodic_listener_task(void *pvParameters) {
                 listener_state.listening = 0;
                 listener_state.cycles_completed++;
 
-                audio_disable_input();
-                power_manager_set_mode(POWER_MODE_MODEM_SLEEP);
+                audio_stop_recording();
+                power_manager_set_mode(POWER_MODE_SLEEP);
 
                 ESP_LOGD(TAG, "Periodic listening: OFF (sleeping, cycle %u)", listener_state.cycles_completed);
             }

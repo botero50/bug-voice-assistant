@@ -4,22 +4,47 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
 #include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <string.h>
 
 static const char *TAG = "MICROSD";
 static sdmmc_card_t *card = NULL;
 
+// TF slot pins (same map as TamaPoke's pin_config.h)
+#define SD_SPI_HOST SPI3_HOST
+#define SD_PIN_CLK 2
+#define SD_PIN_CMD 1
+#define SD_PIN_DATA 3
+#define SD_PIN_CS 41
+
 esp_err_t microsd_init(void) {
     ESP_LOGI(TAG, "Initializing SD card...");
 
+    spi_bus_config_t bus_config = {
+        .mosi_io_num = SD_PIN_CMD,
+        .miso_io_num = SD_PIN_DATA,
+        .sclk_io_num = SD_PIN_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4092,
+    };
+    esp_err_t bus_ret = spi_bus_initialize(SD_SPI_HOST, &bus_config, SPI_DMA_CH_AUTO);
+    if (bus_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start SD SPI bus: %s", esp_err_to_name(bus_ret));
+        return bus_ret;
+    }
+
     // SPI host configuration
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = SD_SPI_HOST;
     host.max_freq_khz = 20000;  // 20 MHz for stability
 
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = GPIO_NUM_34;      // CS pin
-    slot_config.host_id = host.slot;
+    slot_config.gpio_cs = SD_PIN_CS;
+    slot_config.host_id = SD_SPI_HOST;
 
     // Mount filesystem
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -31,6 +56,7 @@ esp_err_t microsd_init(void) {
     esp_err_t ret = esp_vfs_fat_sdspi_mount("/sd", &host, &slot_config, &mount_config, &card);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+        spi_bus_free(SD_SPI_HOST);
         return ret;
     }
 
@@ -43,6 +69,7 @@ esp_err_t microsd_init(void) {
 esp_err_t microsd_deinit(void) {
     if (card) {
         esp_vfs_fat_sdcard_unmount("/sd", card);
+        spi_bus_free(SD_SPI_HOST);
         ESP_LOGI(TAG, "SD card unmounted");
         card = NULL;
     }
