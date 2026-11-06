@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bug · Installer</title>
+<style>
+  :root { --bg:#121212; --card:#1e1e1e; --ink:#f1f1f1; --muted:#a8a8a8; --accent:#4fc38a; --warn:#ffb74d; --line:#333; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--ink); line-height:1.6; }
+  .wrap { max-width:680px; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:2rem; margin:0 0 .25rem; }
+  h2 { font-size:1.25rem; margin:2.5rem 0 .5rem; }
+  .sub,.note { color:var(--muted); }
+  .note { font-size:.9rem; }
+  .ver { display:inline-block; margin:.35rem 0 1.25rem; padding:.35rem .75rem; background:var(--card); border:1px solid var(--line); border-radius:999px; font-size:.95rem; }
+  .step { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:1.25rem 1.5rem; margin:1rem 0; }
+  .preview { border:2px solid var(--warn); border-radius:14px; padding:1rem 1.2rem; margin:1rem 0 1.5rem; }
+  .preview strong { color:var(--warn); }
+  button { font:inherit; font-weight:600; padding:.65rem 1.2rem; border-radius:10px; border:0; background:var(--accent); color:#0b1f14; cursor:pointer; }
+  .unsupported { display:none; color:var(--warn); font-weight:600; }
+  a { color:var(--accent); }
+  li { margin:.2rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🐞 Bug</h1>
+  <p class="ver">Firmware <b>__VERSION__</b> · build __BUILD__</p>
+  <p class="sub">Spanish voice assistant for the Waveshare ESP32-S3-Touch-AMOLED-1.75.</p>
+
+  <div class="preview"><strong>⚠️ Preview: Bug can't answer you yet.</strong><br>
+    This build is for testing the install on the board. Listening, answers and the
+    connection to the Bug server are still being built, and it has not been tested on
+    real hardware.</div>
+
+  <p class="unsupported" id="unsupported">⚠️ Use desktop Chrome or Edge. This browser does not support Web Serial.</p>
+
+  <h2>Install</h2>
+  <div class="step">
+    <p>Connect the board by USB, press install and select its serial port.</p>
+    <esp-web-install-button manifest="manifest.json?v=__BUILD__">
+      <button slot="activate">⚡ Install Bug __VERSION__</button>
+      <span slot="unsupported">Browser not supported (use Chrome/Edge).</span>
+      <span slot="not-allowed">Needs HTTPS or localhost.</span>
+    </esp-web-install-button>
+    <p class="note"><b>Coming from another firmware?</b> Installing Bug replaces whatever is
+      on the board. Turn on <b>Erase device</b> for a clean start. This also deletes any saved
+      data from the old firmware, so back it up first.</p>
+  </div>
+
+  <p class="note"><a href="https://github.com/botero50/bug-voice-assistant">Source code on GitHub</a></p>
+</div>
+
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js"></script>
+<script>
+  if (!('serial' in navigator)) document.getElementById('unsupported').style.display = 'block';
+</script>
+</body>
+</html>

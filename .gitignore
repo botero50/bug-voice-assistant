@@ -19,3 +19,10 @@ ENV/
 .cache/
 
 .claude/settings.local.json
+voice-assistant-plan.html
+
+# ESP-IDF build output
+firmware/build/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
