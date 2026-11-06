@@ -1,6 +1,8 @@
 #ifndef MICROSD_MANAGER_H
 #define MICROSD_MANAGER_H
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
 
 typedef struct {

@@ -2,6 +2,7 @@
 #define UI_VOICE_INTEGRATION_H
 
 #include "ui_config.h"
+#include "power_profile_manager.h"
 
 // Voice event callbacks - update UI based on voice assistant state
 void ui_on_wake_word_detected(void);
@@ -30,6 +31,6 @@ void ui_on_skill_story_update(const char *story_text);
 void ui_on_battery_update(uint8_t percent);
 void ui_on_wifi_status_change(bool connected);
 void ui_on_mic_mute_change(bool muted);
-void ui_on_power_profile_change(power_profile_t profile);
+void ui_on_power_profile_change(PowerProfile profile);
 
 #endif // UI_VOICE_INTEGRATION_H

@@ -1,3 +1,4 @@
+#include <math.h>
 #include "ui_settings.h"
 #include "ui_config.h"
 #include "lvgl.h"

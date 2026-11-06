@@ -92,7 +92,7 @@ lv_obj_t *ui_create_calendar_screen(void) {
         lv_obj_set_size(card, 380, 45);
         lv_obj_set_pos(card, 0, y_pos);
         lv_obj_set_style_bg_color(card, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_5, 0);  // More transparent for future events
+        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0);  // More transparent for future events
         lv_obj_set_style_border_opa(card, LV_OPA_0, 0);
         lv_obj_set_style_pad_all(card, 8, 0);
 
@@ -100,7 +100,7 @@ lv_obj_t *ui_create_calendar_screen(void) {
         lv_label_set_text(event, events_tomorrow[i]);
         lv_obj_set_pos(event, 5, 10);
         lv_obj_set_style_text_color(event, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_font(event, &lv_font_montserrat_13, 0);
+        lv_obj_set_style_text_font(event, &lv_font_montserrat_14, 0);
 
         y_pos += 50;
     }

@@ -1,6 +1,8 @@
 #ifndef POWER_MANAGER_H
 #define POWER_MANAGER_H
 
+#include <stdbool.h>
+#include <stdint.h>
 #include "esp_err.h"
 
 typedef enum {

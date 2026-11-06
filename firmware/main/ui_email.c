@@ -165,7 +165,7 @@ lv_obj_t *ui_create_email_detail_screen(const char *from, const char *subject, c
     lv_label_set_long_mode(body_text, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(body_text, 10, 75);
     lv_obj_set_style_text_color(body_text, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(body_text, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(body_text, &lv_font_montserrat_14, 0);
 
     // Action buttons
     lv_obj_t *btn_reply = lv_btn_create(container);

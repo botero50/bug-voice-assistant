@@ -2,6 +2,7 @@
 #define POWER_OPTIMIZER_H
 
 #include "esp_err.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 // Power consumption estimates (milliamps)
@@ -29,11 +30,11 @@ typedef enum {
     PROFILE_ALWAYS_LISTENING = 0,
     PROFILE_PERIODIC = 1,
     PROFILE_GESTURE_ONLY = 2
-} PowerProfile;
+} OptimizerProfile;
 
 // Power state structure
 typedef struct {
-    PowerProfile profile;
+    OptimizerProfile profile;
     uint8_t battery_percent;
     float current_draw_ma;
     float estimated_hours_remaining;
@@ -51,8 +52,8 @@ void power_optimizer_update_state(void);
 PowerState power_optimizer_get_state(void);
 
 // Specific optimizations
-void power_optimizer_set_profile(PowerProfile profile);
-PowerProfile power_optimizer_get_profile(void);
+void power_optimizer_set_profile(OptimizerProfile profile);
+OptimizerProfile power_optimizer_get_profile(void);
 void power_optimizer_set_display_brightness(uint8_t brightness);  // 0-100%
 void power_optimizer_gate_boost_converter(bool enabled);  // Critical power saving
 void power_optimizer_gate_wifi(bool enabled);

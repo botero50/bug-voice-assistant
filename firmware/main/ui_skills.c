@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "ui_skills.h"
 #include "ui_config.h"
 #include "lvgl.h"
@@ -30,7 +31,7 @@ lv_obj_t *ui_create_jokes_screen(const char *setup, const char *punchline) {
     lv_obj_set_size(card, 380, 200);
     lv_obj_set_pos(card, 10, 40);
     lv_obj_set_style_bg_color(card, COLOR_ACCENT_GRAY, 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_15, 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_20, 0);
     lv_obj_set_style_border_color(card, COLOR_ACCENT_GREEN, 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
@@ -60,7 +61,7 @@ lv_obj_t *ui_create_jokes_screen(const char *setup, const char *punchline) {
     lv_label_set_long_mode(punchline_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(punchline_label, 0, 95);
     lv_obj_set_style_text_color(punchline_label, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(punchline_label, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(punchline_label, &lv_font_montserrat_14, 0);
 
     // Action buttons
     lv_obj_t *btn_next = lv_btn_create(container);
@@ -113,7 +114,7 @@ lv_obj_t *ui_create_radio_screen(const char *station, const char *now_playing) {
     lv_label_set_long_mode(playing_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_pos(playing_label, 10, 60);
     lv_obj_set_style_text_color(playing_label, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(playing_label, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(playing_label, &lv_font_montserrat_14, 0);
 
     // Playback controls
     lv_obj_t *ctrl_container = lv_obj_create(container);
@@ -167,7 +168,7 @@ lv_obj_t *ui_create_radio_screen(const char *station, const char *now_playing) {
     lv_label_set_text(stations_label, "Stations:");
     lv_obj_set_pos(stations_label, 10, 170);
     lv_obj_set_style_text_color(stations_label, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(stations_label, &lv_font_montserrat_11, 0);
+    lv_obj_set_style_text_font(stations_label, &lv_font_montserrat_12, 0);
 
     const char *station_list[] = {"• BBC Radio 1", "○ BBC Radio 2", "○ Classic FM"};
     for (int i = 0; i < 3; i++) {
@@ -217,19 +218,19 @@ lv_obj_t *ui_create_crypto_screen(const char *price_btc, const char *price_eth) 
     lv_label_set_text(btc_symbol, "Bitcoin");
     lv_obj_set_pos(btc_symbol, 5, 8);
     lv_obj_set_style_text_color(btc_symbol, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(btc_symbol, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(btc_symbol, &lv_font_montserrat_14, 0);
 
     lv_obj_t *btc_price = lv_label_create(btc_card);
     lv_label_set_text(btc_price, price_btc ? price_btc : "$62,450");
     lv_obj_set_pos(btc_price, 300, 8);
     lv_obj_set_style_text_color(btc_price, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(btc_price, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(btc_price, &lv_font_montserrat_14, 0);
 
     lv_obj_t *btc_change = lv_label_create(btc_card);
     lv_label_set_text(btc_change, "↑ 2.3% today");
     lv_obj_set_pos(btc_change, 5, 28);
     lv_obj_set_style_text_color(btc_change, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(btc_change, &lv_font_montserrat_11, 0);
+    lv_obj_set_style_text_font(btc_change, &lv_font_montserrat_12, 0);
 
     // Ethereum
     y_pos += 80;
@@ -246,19 +247,19 @@ lv_obj_t *ui_create_crypto_screen(const char *price_btc, const char *price_eth) 
     lv_label_set_text(eth_symbol, "Ethereum");
     lv_obj_set_pos(eth_symbol, 5, 8);
     lv_obj_set_style_text_color(eth_symbol, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(eth_symbol, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(eth_symbol, &lv_font_montserrat_14, 0);
 
     lv_obj_t *eth_price = lv_label_create(eth_card);
     lv_label_set_text(eth_price, price_eth ? price_eth : "$2,580");
     lv_obj_set_pos(eth_price, 310, 8);
     lv_obj_set_style_text_color(eth_price, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(eth_price, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(eth_price, &lv_font_montserrat_14, 0);
 
     lv_obj_t *eth_change = lv_label_create(eth_card);
     lv_label_set_text(eth_change, "↓ 0.8% today");
     lv_obj_set_pos(eth_change, 5, 28);
     lv_obj_set_style_text_color(eth_change, COLOR_ACCENT_RED, 0);
-    lv_obj_set_style_text_font(eth_change, &lv_font_montserrat_11, 0);
+    lv_obj_set_style_text_font(eth_change, &lv_font_montserrat_12, 0);
 
     // Action buttons
     lv_obj_t *btn_refresh = lv_btn_create(container);
@@ -328,7 +329,7 @@ lv_obj_t *ui_create_book_reader_screen(const char *title, const char *chapter, i
     lv_label_set_text(page_label, page_str);
     lv_obj_set_pos(page_label, 10, 58);
     lv_obj_set_style_text_color(page_label, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(page_label, &lv_font_montserrat_11, 0);
+    lv_obj_set_style_text_font(page_label, &lv_font_montserrat_12, 0);
 
     // Book content (scrollable)
     lv_obj_t *content = lv_label_create(container);
@@ -337,7 +338,7 @@ lv_obj_t *ui_create_book_reader_screen(const char *title, const char *chapter, i
     lv_label_set_long_mode(content, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(content, 10, 80);
     lv_obj_set_style_text_color(content, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(content, &lv_font_montserrat_13, 0);
+    lv_obj_set_style_text_font(content, &lv_font_montserrat_14, 0);
 
     // Playback controls
     lv_obj_t *ctrl_container = lv_obj_create(container);

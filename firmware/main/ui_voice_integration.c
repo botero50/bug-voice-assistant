@@ -150,7 +150,7 @@ void ui_on_mic_mute_change(bool muted) {
     ESP_LOGI(TAG, "Microphone %s", muted ? "muted" : "unmuted");
 }
 
-void ui_on_power_profile_change(power_profile_t profile) {
+void ui_on_power_profile_change(PowerProfile profile) {
     ESP_LOGI(TAG, "Power profile changed: %d", profile);
     // Update display indicator (e.g., ring color changes based on profile)
     // Always-Listening: full brightness

@@ -50,7 +50,6 @@ lv_obj_t *ui_create_voice_feedback_stt(const char *transcription) {
     lv_obj_align(voice_feedback_ctx.waveform_chart, LV_ALIGN_TOP_MID, 0, 40);
     lv_chart_set_type(voice_feedback_ctx.waveform_chart, LV_CHART_TYPE_BAR);
     lv_chart_set_point_count(voice_feedback_ctx.waveform_chart, 10);
-    lv_chart_set_axis_tick(voice_feedback_ctx.waveform_chart, LV_CHART_AXIS_SECONDARY_Y, 0, 0, 0);
     lv_obj_set_style_bg_opa(voice_feedback_ctx.waveform_chart, LV_OPA_0, 0);
     lv_obj_set_style_border_opa(voice_feedback_ctx.waveform_chart, LV_OPA_0, 0);
 

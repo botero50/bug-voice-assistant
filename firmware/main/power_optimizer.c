@@ -91,7 +91,7 @@ PowerState power_optimizer_get_state(void) {
     return current_state;
 }
 
-void power_optimizer_set_profile(PowerProfile profile) {
+void power_optimizer_set_profile(OptimizerProfile profile) {
     ESP_LOGI(TAG, "Switching to power profile: %d", profile);
 
     current_state.profile = profile;
@@ -132,7 +132,7 @@ void power_optimizer_set_profile(PowerProfile profile) {
     power_optimizer_update_state();
 }
 
-PowerProfile power_optimizer_get_profile(void) {
+OptimizerProfile power_optimizer_get_profile(void) {
     return current_state.profile;
 }
 

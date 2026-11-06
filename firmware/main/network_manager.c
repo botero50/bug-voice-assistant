@@ -5,6 +5,7 @@
 #include "esp_http_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "NETWORK";
@@ -64,7 +65,6 @@ esp_err_t network_manager_connect_wifi(const char *ssid, const char *password) {
 
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid_len = strlen(ssid),
             .scan_method = WIFI_ALL_CHANNEL_SCAN,
             .bssid_set = false,
             .channel = 0,
