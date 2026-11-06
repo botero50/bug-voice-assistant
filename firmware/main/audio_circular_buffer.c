@@ -1,5 +1,6 @@
 #include "audio_circular_buffer.h"
 #include <string.h>
+#include <esp_attr.h>
 #include <esp_log.h>
 
 static const char *TAG = "AUDIO_BUFFER";
@@ -11,7 +12,8 @@ typedef struct {
     volatile int available_samples;
 } CircularAudioBuffer;
 
-static CircularAudioBuffer audio_buf = {0};
+// 160 KB: kept in PSRAM so internal RAM stays free for the display and Wi-Fi.
+EXT_RAM_BSS_ATTR static CircularAudioBuffer audio_buf;
 
 void audio_circular_buffer_init(void) {
     memset(&audio_buf, 0, sizeof(audio_buf));

@@ -1,6 +1,7 @@
 #include "speaker_identification.h"
 #include <string.h>
 #include <math.h>
+#include <esp_attr.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
 #include <nvs.h>
@@ -21,7 +22,7 @@ typedef struct {
     int num_profiles;
 } SpeakerIDState;
 
-static SpeakerIDState speaker_state = {0};
+EXT_RAM_BSS_ATTR static SpeakerIDState speaker_state;
 
 static float compute_energy(const int16_t *audio, int sample_count) {
     float energy = 0.0f;

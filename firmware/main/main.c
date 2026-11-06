@@ -43,6 +43,22 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "✓ NVS initialized");
 
+    // Initialize the display first: its buffers need DMA-capable internal RAM,
+    // which later startup steps use up.
+    ESP_LOGI(TAG, "Initializing display driver...");
+    bool display_ready = display_init() == ESP_OK;
+    if (display_ready) {
+        ESP_LOGI(TAG, "✓ Display driver ready");
+
+        // Initialize UI (LVGL for 466x466 circular AMOLED display)
+        ESP_LOGI(TAG, "Initializing UI system...");
+        ui_init();
+        lv_timer_handler();
+        ESP_LOGI(TAG, "✓ UI system ready (dark theme, 466x466 circular AMOLED)");
+    } else {
+        ESP_LOGE(TAG, "✗ Display initialization failed - continuing without screen");
+    }
+
     // Initialize MicroSD card
     ESP_LOGI(TAG, "Initializing MicroSD card...");
     if (microsd_init() != ESP_OK) {
@@ -97,20 +113,6 @@ void app_main(void) {
         if (num_profiles > 0) {
             speaker_id_print_profiles();
         }
-    }
-
-    // Initialize display driver (AMOLED + touch)
-    ESP_LOGI(TAG, "Initializing display driver...");
-    bool display_ready = display_init() == ESP_OK;
-    if (display_ready) {
-        ESP_LOGI(TAG, "✓ Display driver ready");
-
-        // Initialize UI (LVGL for 466x466 circular AMOLED display)
-        ESP_LOGI(TAG, "Initializing UI system...");
-        ui_init();
-        ESP_LOGI(TAG, "✓ UI system ready (dark theme, 466x466 circular AMOLED)");
-    } else {
-        ESP_LOGE(TAG, "✗ Display initialization failed - continuing without screen");
     }
 
     // Initialize power manager
