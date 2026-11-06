@@ -1,0 +1,45 @@
+{
+  "device_name": "Bug",
+  "version": "1.0.0",
+  "language": "es-CO",
+  "timezone": "-05:00",
+  "audio": {
+    "sample_rate": 16000,
+    "bit_depth": 16,
+    "channels": 1,
+    "mic_gain": 1.0,
+    "speaker_volume": 80
+  },
+  "power": {
+    "modem_sleep_enabled": true,
+    "auto_brightness": true,
+    "brightness_level": 80,
+    "idle_timeout_seconds": 300,
+    "min_cpu_freq_mhz": 80,
+    "max_cpu_freq_mhz": 240
+  },
+  "models": {
+    "stt_model": "whisper_base.onnx",
+    "stt_model_size_mb": 150,
+    "tts_model": "piper_es_CO.onnx",
+    "tts_model_size_mb": 50,
+    "llm_model": "tinyllama_q4.gguf",
+    "llm_model_size_mb": 4000,
+    "use_local_llm": false,
+    "use_cloud_llm": true
+  },
+  "network": {
+    "wifi_ssid": "",
+    "wifi_auto_connect": true,
+    "use_4g_fallback": true,
+    "orchestrator_url": "http://192.168.1.100:5000"
+  },
+  "features": {
+    "wake_word_detection": false,
+    "always_listening": false,
+    "voice_confirmation": true,
+    "email_integration": true,
+    "calendar_integration": true,
+    "ota_updates": true
+  }
+}

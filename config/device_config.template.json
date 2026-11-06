@@ -1,0 +1,159 @@
+{
+  "device": {
+    "name": "Bug Voice Assistant",
+    "location": "Bogotá, Colombia",
+    "primary_language": "es-ES",
+    "secondary_language": "en-US",
+    "time_zone": "America/Bogota"
+  },
+
+  "apis": {
+    "claude": {
+      "enabled": true,
+      "api_key": "sk-YOUR_CLAUDE_API_KEY_HERE",
+      "model": "claude-3-5-sonnet-20241022",
+      "fallback_mode": "mock",
+      "max_tokens": 1024,
+      "temperature": 0.7
+    },
+
+    "gmail": {
+      "enabled": false,
+      "mock_mode": true,
+      "client_id": "YOUR_GMAIL_CLIENT_ID",
+      "client_secret": "YOUR_GMAIL_CLIENT_SECRET",
+      "max_emails": 20
+    },
+
+    "outlook": {
+      "enabled": false,
+      "mock_mode": true,
+      "client_id": "YOUR_OUTLOOK_CLIENT_ID",
+      "client_secret": "YOUR_OUTLOOK_CLIENT_SECRET",
+      "max_emails": 20
+    },
+
+    "weather": {
+      "enabled": true,
+      "api": "open-meteo",
+      "mock_mode": false,
+      "default_location": "Bogotá",
+      "default_coords": {
+        "latitude": 4.7110,
+        "longitude": -74.0721
+      },
+      "cache_minutes": 60
+    },
+
+    "crypto": {
+      "enabled": true,
+      "api": "coingecko",
+      "mock_mode": false,
+      "symbols": ["bitcoin", "ethereum", "cardano"],
+      "currency": "usd",
+      "cache_minutes": 5
+    },
+
+    "radio": {
+      "enabled": true,
+      "api": "radio-browser",
+      "mock_mode": false,
+      "cache_minutes": 30
+    }
+  },
+
+  "microphone": {
+    "i2s_port": 1,
+    "sample_rate": 16000,
+    "channels": 1,
+    "bits_per_sample": 16,
+    "buffer_size": 512,
+    "mclk_gpio": 0,
+    "bclk_gpio": 4,
+    "ws_gpio": 5,
+    "din_gpio": 35
+  },
+
+  "display": {
+    "width": 466,
+    "height": 466,
+    "bits_per_pixel": 16,
+    "i2c_port": 0,
+    "sda_gpio": 48,
+    "scl_gpio": 47,
+    "reset_gpio": 17,
+    "boost_enable_gpio": 13,
+    "touch_controller": "gt911",
+    "touch_address": 0x5D
+  },
+
+  "power": {
+    "default_profile": "always_listening",
+    "profiles": {
+      "always_listening": {
+        "name": "Always-Listening",
+        "target_current_ma": 10,
+        "wake_word_enabled": true,
+        "wifi_mode": "always_on",
+        "cpu_freq_mhz": 240
+      },
+      "periodic": {
+        "name": "Periodic Wake",
+        "target_current_ma": 2.5,
+        "wake_word_enabled": false,
+        "wifi_mode": "periodic",
+        "cpu_freq_mhz": 160,
+        "wake_interval_minutes": 30
+      },
+      "gesture_only": {
+        "name": "Gesture-Only",
+        "target_current_ma": 0.5,
+        "wake_word_enabled": false,
+        "wifi_mode": "off",
+        "cpu_freq_mhz": 80
+      }
+    },
+    "battery_capacity_mah": 2000,
+    "low_battery_threshold_percent": 15,
+    "shutdown_threshold_percent": 5
+  },
+
+  "storage": {
+    "microsd_enabled": true,
+    "microsd_path": "/sdcard",
+    "models_path": "/sdcard/models",
+    "config_path": "/sdcard/config",
+    "logs_path": "/sdcard/logs"
+  },
+
+  "voice": {
+    "wake_word": "Hey Bug",
+    "wake_word_confidence": 0.7,
+    "vad_threshold": 0.5,
+    "max_recording_seconds": 30,
+    "silence_timeout_ms": 1000
+  },
+
+  "speakers": {
+    "enabled": true,
+    "max_speakers": 4,
+    "enrollment_samples": 3,
+    "identification_threshold": 0.75
+  },
+
+  "network": {
+    "wifi_ssid": "YOUR_SSID",
+    "wifi_password": "YOUR_PASSWORD",
+    "wifi_auth_mode": "WPA2_PSK",
+    "max_retries": 3,
+    "timeout_seconds": 10
+  },
+
+  "logging": {
+    "enabled": true,
+    "level": "INFO",
+    "file_path": "/sdcard/logs/bug.log",
+    "max_file_size_bytes": 1048576,
+    "max_files": 5
+  }
+}

@@ -1,0 +1,471 @@
+version: '3.8'
+
+services:
+  stt:
+    build:
+      context: ./services/stt
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - MODEL_PATH=/app/models
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  llm:
+    build:
+      context: ./services/llm
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - MODEL_PATH=/app/models
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  tts:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    ports:
+      - "5003:5003"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - MODEL_PATH=/app/models
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - STT_SERVICE=http://stt:5001
+      - LLM_SERVICE=http://llm:5002
+      - TTS_SERVICE=http://tts:5003
+      - WAKE_WORD_SERVICE=http://wake_word:5105
+    depends_on:
+      stt:
+        condition: service_healthy
+      llm:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+      wake_word:
+        condition: service_healthy
+    networks:
+      - bug_network
+
+  web:
+    build:
+      context: ./services/web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:5000
+      - LOG_LEVEL=INFO
+    depends_on:
+      - orchestrator
+    networks:
+      - bug_network
+
+  gmail:
+    build:
+      context: ./services/gmail
+      dockerfile: Dockerfile
+    ports:
+      - "5101:5101"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - MOCK_MODE=true
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5101/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  outlook:
+    build:
+      context: ./services/outlook
+      dockerfile: Dockerfile
+    ports:
+      - "5102:5102"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - MOCK_MODE=true
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5102/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  calendar_merger:
+    build:
+      context: ./services/calendar_merger
+      dockerfile: Dockerfile
+    ports:
+      - "5103:5103"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - GMAIL_SERVICE=http://gmail:5101
+      - OUTLOOK_SERVICE=http://outlook:5102
+    depends_on:
+      gmail:
+        condition: service_healthy
+      outlook:
+        condition: service_healthy
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5103/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  email_composer:
+    build:
+      context: ./services/email_composer
+      dockerfile: Dockerfile
+    ports:
+      - "5104:5104"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - LLM_SERVICE=http://llm:5002
+      - GMAIL_SERVICE=http://gmail:5101
+      - OUTLOOK_SERVICE=http://outlook:5102
+    depends_on:
+      llm:
+        condition: service_healthy
+      gmail:
+        condition: service_healthy
+      outlook:
+        condition: service_healthy
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5104/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  wake_word:
+    build:
+      context: ./services/wake_word
+      dockerfile: Dockerfile
+    ports:
+      - "5105:5105"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5105/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  power_optimizer:
+    build:
+      context: ./services/power_optimizer
+      dockerfile: Dockerfile
+    ports:
+      - "5108:5108"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5108/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  speaker_identification:
+    build:
+      context: ./services/speaker_identification
+      dockerfile: Dockerfile
+    ports:
+      - "5109:5109"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5109/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  model_optimizer:
+    build:
+      context: ./services/model_optimizer
+      dockerfile: Dockerfile
+    ports:
+      - "5110:5110"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5110/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  jokes:
+    build:
+      context: ./services/jokes
+      dockerfile: Dockerfile
+    ports:
+      - "5106:5106"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5106/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  crypto:
+    build:
+      context: ./services/crypto
+      dockerfile: Dockerfile
+    ports:
+      - "5107:5107"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5107/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  radio:
+    build:
+      context: ./services/radio
+      dockerfile: Dockerfile
+    ports:
+      - "5111:5111"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5111/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  story_generator:
+    build:
+      context: ./services/story_generator
+      dockerfile: Dockerfile
+    ports:
+      - "5112:5112"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5112/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  book_reader:
+    build:
+      context: ./services/book_reader
+      dockerfile: Dockerfile
+    ports:
+      - "5113:5113"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5113/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  voice_games:
+    build:
+      context: ./services/voice_games
+      dockerfile: Dockerfile
+    ports:
+      - "5114:5114"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5114/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  akinator:
+    build:
+      context: ./services/akinator
+      dockerfile: Dockerfile
+    ports:
+      - "5115:5115"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5115/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  weather:
+    build:
+      context: ./services/weather
+      dockerfile: Dockerfile
+    ports:
+      - "5116:5116"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5116/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  screen_games:
+    build:
+      context: ./services/screen_games
+      dockerfile: Dockerfile
+    ports:
+      - "5117:5117"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5117/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  smart_home:
+    build:
+      context: ./services/smart_home
+      dockerfile: Dockerfile
+    ports:
+      - "5118:5118"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+    networks:
+      - bug_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5118/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  bug_network:
+    driver: bridge

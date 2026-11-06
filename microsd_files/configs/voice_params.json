@@ -1,0 +1,25 @@
+{
+  "voice_activity_detection": {
+    "threshold": 0.5,
+    "min_speech_duration_ms": 500,
+    "max_speech_duration_ms": 30000,
+    "silence_timeout_ms": 2000,
+    "energy_threshold": 0.02
+  },
+  "audio_preprocessing": {
+    "normalize": true,
+    "noise_gate": -40,
+    "high_pass_filter_hz": 80
+  },
+  "Colombian_Spanish": {
+    "voice_id": "es-CO-SalomeNeural",
+    "speaker_rate": 1.0,
+    "pitch_semitones": 0,
+    "energy_level": 1.0
+  },
+  "recognition": {
+    "language_code": "es-CO",
+    "confidence_threshold": 0.7,
+    "max_alternatives": 1
+  }
+}

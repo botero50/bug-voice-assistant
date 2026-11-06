@@ -1,0 +1,38 @@
+{
+  "profiles": {
+    "power_save": {
+      "cpu_freq_mhz": 80,
+      "modem_sleep": true,
+      "light_sleep": true,
+      "amoled_brightness": 30,
+      "mic_gain": 0.8,
+      "use_case": "idle, waiting for voice"
+    },
+    "normal": {
+      "cpu_freq_mhz": 160,
+      "modem_sleep": true,
+      "light_sleep": false,
+      "amoled_brightness": 80,
+      "mic_gain": 1.0,
+      "use_case": "active conversation"
+    },
+    "high_performance": {
+      "cpu_freq_mhz": 240,
+      "modem_sleep": false,
+      "light_sleep": false,
+      "amoled_brightness": 100,
+      "mic_gain": 1.2,
+      "use_case": "processing, LLM inference"
+    }
+  },
+  "idle_transitions": {
+    "active_to_normal_seconds": 5,
+    "normal_to_power_save_seconds": 30,
+    "power_save_timeout_seconds": 300
+  },
+  "battery_thresholds": {
+    "critical": 10,
+    "low": 20,
+    "normal": 50
+  }
+}
