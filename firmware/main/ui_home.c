@@ -8,6 +8,14 @@ static const char *TAG = "UI_HOME";
 // Animation variables
 static lv_anim_t anim_pulse;
 static lv_anim_t anim_spin;
+static lv_obj_t *home_status_label = NULL;
+
+void ui_home_set_status(const char *text) {
+    if (home_status_label) {
+        lv_label_set_text(home_status_label, text);
+        lv_obj_align(home_status_label, LV_ALIGN_CENTER, 0, 70);
+    }
+}
 
 // Callback for pulse animation (listening state)
 static void anim_pulse_callback(void *var, int32_t v) {
@@ -70,6 +78,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_align(status_label, LV_ALIGN_CENTER, 0, 70);
     lv_obj_set_style_text_color(status_label, COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(status_label, &lv_font_montserrat_16, 0);
+    home_status_label = status_label;
 
     // Navigation dots (bottom)
     // Layout: [◀] [◉ Home] [▶]

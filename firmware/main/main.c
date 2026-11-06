@@ -11,6 +11,7 @@
 #include "microsd_manager.h"
 #include "power_manager.h"
 #include "audio_driver.h"
+#include "audio_selftest.h"
 #include "network_manager.h"
 #include "wake_word_detector.h"
 #include "audio_circular_buffer.h"
@@ -20,6 +21,7 @@
 #include "speaker_context_manager.h"
 #include "ui_core.h"
 #include "ui_home.h"
+#include "audio_selftest.h"
 #include "display_driver.h"
 #include "power_optimizer.h"
 #include "voice_activity_detection.h"
@@ -72,7 +74,8 @@ void app_main(void) {
 
     // Initialize audio driver
     ESP_LOGI(TAG, "Initializing audio driver...");
-    if (audio_init(AUDIO_DIR_DUPLEX) != ESP_OK) {
+    bool audio_ready = audio_init(AUDIO_DIR_DUPLEX) == ESP_OK;
+    if (!audio_ready) {
         ESP_LOGE(TAG, "✗ Audio initialization failed - continuing without audio");
     } else {
         ESP_LOGI(TAG, "✓ Audio driver ready");
@@ -156,12 +159,20 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "Bug preview firmware started: voice features are not active yet");
 
+    if (audio_ready) {
+        audio_selftest_start();
+    }
+
     // Main event loop
     int capture_count = 0;
     uint32_t idle_start_time = xTaskGetTickCount();
 
     while (1) {
         if (display_ready) {
+            const char *test_status = audio_selftest_take_status();
+            if (test_status) {
+                ui_home_set_status(test_status);
+            }
             lv_timer_handler();
         }
         vTaskDelay(pdMS_TO_TICKS(10));

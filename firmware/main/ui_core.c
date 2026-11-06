@@ -127,11 +127,9 @@ static void ui_init_styles(void) {
     // Status bar style
     lv_style_init(&style_status_bar);
     lv_style_set_bg_color(&style_status_bar, COLOR_BG_DARK);
-    lv_style_set_bg_opa(&style_status_bar, LV_OPA_COVER);
-    lv_style_set_border_color(&style_status_bar, COLOR_TEXT_SECONDARY);
-    lv_style_set_border_width(&style_status_bar, 1);
-    lv_style_set_border_side(&style_status_bar, LV_BORDER_SIDE_BOTTOM);
-    lv_style_set_pad_all(&style_status_bar, 4);
+    lv_style_set_bg_opa(&style_status_bar, LV_OPA_0);
+    lv_style_set_border_width(&style_status_bar, 0);
+    lv_style_set_pad_all(&style_status_bar, 0);
 
     ESP_LOGI(TAG, "Styles initialized");
 }
@@ -156,26 +154,26 @@ static void ui_clip_circular_display(void) {
 
 static void ui_create_status_bar(void) {
     // Status bar: time | signal | battery | mute
-    // Height: 30px, positioned at top center
+    // Kept inside the circle: at this height the round panel is about 240px wide.
 
     ui_ctx.status_bar = lv_obj_create(ui_ctx.root_screen);
-    lv_obj_set_size(ui_ctx.status_bar, 400, 30);
-    lv_obj_set_pos(ui_ctx.status_bar, 33, 5);  // Centered horizontally
+    lv_obj_set_size(ui_ctx.status_bar, 200, 30);
+    lv_obj_align(ui_ctx.status_bar, LV_ALIGN_TOP_MID, 0, 28);
     lv_obj_add_style(ui_ctx.status_bar, &style_status_bar, 0);
     lv_obj_clear_flag(ui_ctx.status_bar, LV_OBJ_FLAG_SCROLLABLE);
 
     // Time label (left)
     lv_obj_t *time_label = lv_label_create(ui_ctx.status_bar);
     lv_label_set_text(time_label, "--:--");
-    lv_obj_set_pos(time_label, 5, 5);
     lv_obj_add_style(time_label, &style_text_primary, 0);
     lv_obj_set_style_text_font(time_label, font_heading, 0);
+    lv_obj_align(time_label, LV_ALIGN_LEFT_MID, 0, 0);
 
     // Battery label (right)
     lv_obj_t *battery_label = lv_label_create(ui_ctx.status_bar);
     lv_label_set_text(battery_label, "--%");
-    lv_obj_set_pos(battery_label, 340, 5);
     lv_obj_add_style(battery_label, &style_text_secondary, 0);
+    lv_obj_align(battery_label, LV_ALIGN_RIGHT_MID, 0, 0);
 
     // WiFi indicator (if needed)
     // Mute indicator (if needed)
