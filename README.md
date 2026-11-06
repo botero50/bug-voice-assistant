@@ -1,8 +1,10 @@
 # 🎤 Bug Voice Assistant - ESP32-S3 AMOLED
 
-**Production-ready, offline-first voice assistant for ESP32-S3 1.75" AMOLED round display.**
+**Spanish voice assistant for the Waveshare ESP32-S3-Touch-AMOLED-1.75 round display.**
 
-- **Status:** ✅ Complete & Production Ready
+**[Install the firmware from your browser](https://botero50.github.io/bug-voice-assistant/)** (desktop Chrome or Edge)
+
+- **Status:** 🚧 Preview. The firmware compiles but hasn't been tested on a board. Listening, answers, touch and the connection to the server aren't working on the device yet, so some features below are still planned.
 - **Code:** 8,829 lines (firmware + backend)
 - **Services:** 19 Docker containers
 - **Skills:** 15+ (entertainment + productivity)

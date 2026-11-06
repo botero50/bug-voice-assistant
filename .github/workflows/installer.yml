@@ -2,7 +2,7 @@ name: Firmware installer
 
 on:
   push:
-    branches: [main, installer]
+    branches: [main]
     paths:
       - firmware/**
       - web/**
