@@ -26,3 +26,6 @@ firmware/build/
 firmware/managed_components/
 firmware/sdkconfig
 firmware/sdkconfig.old
+
+# Private Wi-Fi settings for the board
+firmware/main/bug_config.local.h

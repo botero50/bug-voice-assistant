@@ -6,6 +6,7 @@
 #include "driver/i2s_std.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <math.h>
 
 static const char *TAG = "AUDIO";
 static i2s_chan_handle_t tx_handle = NULL;
@@ -247,6 +248,40 @@ esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size) {
 
 void audio_set_speaker(bool enabled) {
     gpio_set_level(PIN_SPEAKER_AMP, enabled ? 1 : 0);
+}
+
+void audio_beep(float frequency_hz, int milliseconds) {
+    const int total = SAMPLE_RATE * milliseconds / 1000;
+    const int fade = 80;  // samples, avoids clicks
+    int16_t chunk[CHUNK_FRAMES];
+    int done = 0;
+
+    while (done < total) {
+        int count = total - done;
+        if (count > CHUNK_FRAMES) count = CHUNK_FRAMES;
+        for (int i = 0; i < count; i++) {
+            int index = done + i;
+            float level = 8000.0f;
+            if (index < fade) level *= (float)index / fade;
+            if (total - index < fade) level *= (float)(total - index) / fade;
+            chunk[i] = (int16_t)(level * sinf(2.0f * (float)M_PI * frequency_hz * index / SAMPLE_RATE));
+        }
+        audio_write_samples(chunk, count * sizeof(int16_t));
+        done += count;
+    }
+}
+
+void audio_flush_input(int milliseconds) {
+    int16_t chunk[CHUNK_FRAMES];
+    int remaining = SAMPLE_RATE / 1000 * milliseconds;
+
+    while (remaining > 0) {
+        size_t got = 0;
+        if (audio_read_samples(chunk, sizeof(chunk), &got) != ESP_OK || got == 0) {
+            break;
+        }
+        remaining -= got / sizeof(int16_t);
+    }
 }
 
 esp_err_t audio_set_volume(uint8_t volume) {

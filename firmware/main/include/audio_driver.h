@@ -23,6 +23,12 @@ esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size);
 
 // Turns the speaker amplifier on or off. Keep it off when idle to avoid hiss.
 void audio_set_speaker(bool enabled);
+
+// Plays a short sine tone. The speaker amplifier must already be on.
+void audio_beep(float frequency_hz, int milliseconds);
+
+// Throws away microphone audio for a while, e.g. right after the speaker played.
+void audio_flush_input(int milliseconds);
 esp_err_t audio_set_volume(uint8_t volume);
 uint8_t audio_get_volume(void);
 esp_err_t audio_deinit(void);

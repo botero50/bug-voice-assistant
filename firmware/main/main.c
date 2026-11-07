@@ -11,7 +11,7 @@
 #include "microsd_manager.h"
 #include "power_manager.h"
 #include "audio_driver.h"
-#include "audio_selftest.h"
+#include "assistant.h"
 #include "network_manager.h"
 #include "wake_word_detector.h"
 #include "audio_circular_buffer.h"
@@ -21,13 +21,47 @@
 #include "speaker_context_manager.h"
 #include "ui_core.h"
 #include "ui_home.h"
-#include "audio_selftest.h"
+#include "ui_config.h"
 #include "display_driver.h"
 #include "power_optimizer.h"
 #include "voice_activity_detection.h"
 #include "microphone_duty_cycle.h"
 
 static const char *TAG = "BUG_MAIN";
+
+// Screen text is plain ASCII: the built-in fonts have no accented letters.
+static void show_assistant_state(assistant_state_t state) {
+    switch (state) {
+    case ASSISTANT_STATE_NO_CONFIG:
+        ui_home_set_status("Falta WiFi");
+        ui_home_set_ring_color(COLOR_ACCENT_RED);
+        break;
+    case ASSISTANT_STATE_CONNECTING:
+        ui_home_set_status("Conectando");
+        ui_home_set_ring_color(COLOR_ACCENT_GRAY);
+        break;
+    case ASSISTANT_STATE_STANDBY:
+        ui_home_set_status("Di Hola Bug");
+        ui_home_set_ring_color(COLOR_ACCENT_GRAY);
+        break;
+    case ASSISTANT_STATE_LISTENING:
+        ui_home_set_status("Te escucho");
+        ui_home_set_ring_color(COLOR_ACCENT_GREEN);
+        break;
+    case ASSISTANT_STATE_THINKING:
+        ui_home_set_status("Pensando");
+        ui_home_set_ring_color(COLOR_ACCENT_BLUE);
+        break;
+    case ASSISTANT_STATE_SPEAKING:
+        ui_home_set_status("Hablando");
+        ui_home_set_ring_color(COLOR_ACCENT_WHITE);
+        break;
+    case ASSISTANT_STATE_NO_SERVER:
+        ui_home_set_status("Sin servidor");
+        ui_home_set_ring_color(COLOR_ACCENT_RED);
+        break;
+    }
+}
 
 void app_main(void) {
     ESP_LOGI(TAG, "╔═══════════════════════════════════════════════╗");
@@ -157,29 +191,24 @@ void app_main(void) {
     voice_loop_init();
     ESP_LOGI(TAG, "✓ Voice loop ready");
 
-    ESP_LOGI(TAG, "Bug preview firmware started: voice features are not active yet");
+    ESP_LOGI(TAG, "Bug preview firmware started");
 
     if (audio_ready) {
-        audio_selftest_start();
+        assistant_start();
     }
 
     // Main event loop
     int capture_count = 0;
-    uint32_t idle_start_time = xTaskGetTickCount();
 
     while (1) {
         if (display_ready) {
-            const char *test_status = audio_selftest_take_status();
-            if (test_status) {
-                ui_home_set_status(test_status);
+            assistant_state_t state;
+            if (assistant_take_state(&state)) {
+                show_assistant_state(state);
             }
             lv_timer_handler();
         }
         vTaskDelay(pdMS_TO_TICKS(10));
-
-        // Monitor idle time and switch to periodic listening
-        uint32_t idle_duration_ms = pdTICKS_TO_MS(xTaskGetTickCount() - idle_start_time);
-        power_profile_manager_notify_idle(idle_duration_ms);
 
         // Periodic logging and power monitoring (about every 20 seconds)
         if (capture_count++ % 2000 == 0) {

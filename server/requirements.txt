@@ -1,0 +1,6 @@
+flask>=3.0
+faster-whisper>=1.0
+edge-tts>=6.1
+miniaudio>=1.60
+numpy
+requests

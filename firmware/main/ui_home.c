@@ -9,6 +9,13 @@ static const char *TAG = "UI_HOME";
 static lv_anim_t anim_pulse;
 static lv_anim_t anim_spin;
 static lv_obj_t *home_status_label = NULL;
+static lv_obj_t *home_ring = NULL;
+
+void ui_home_set_ring_color(lv_color_t color) {
+    if (home_ring) {
+        lv_obj_set_style_bg_color(home_ring, color, 0);
+    }
+}
 
 void ui_home_set_status(const char *text) {
     if (home_status_label) {
@@ -56,6 +63,7 @@ lv_obj_t *ui_create_home_screen(void) {
     lv_obj_set_style_bg_opa(ring_outer, LV_OPA_60, 0);
     lv_obj_set_style_border_opa(ring_outer, LV_OPA_0, 0);
     lv_obj_set_style_pad_all(ring_outer, 0, 0);
+    home_ring = ring_outer;
 
     // Inner circle (darker, represents speaker/mic)
     lv_obj_t *ring_inner = lv_obj_create(ring_outer);
