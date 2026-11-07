@@ -18,8 +18,31 @@ typedef struct {
     size_t len;
     size_t cap;
     voice_action_t action;
+    char heard[128];
+    char reply[256];
     bool failed;
 } rx_state_t;
+
+static int hex_value(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Headers arrive percent-encoded ("Qu%C3%A9") so accents survive HTTP.
+static void percent_decode(char *dst, size_t cap, const char *src) {
+    size_t out = 0;
+    while (*src && out + 1 < cap) {
+        if (src[0] == '%' && hex_value(src[1]) >= 0 && hex_value(src[2]) >= 0) {
+            dst[out++] = (char)(hex_value(src[1]) * 16 + hex_value(src[2]));
+            src += 3;
+        } else {
+            dst[out++] = *src++;
+        }
+    }
+    dst[out] = '\0';
+}
 
 static esp_err_t on_http_event(esp_http_client_event_t *evt) {
     rx_state_t *rx = (rx_state_t *)evt->user_data;
@@ -33,6 +56,10 @@ static esp_err_t on_http_event(esp_http_client_event_t *evt) {
             } else {
                 rx->action = VOICE_ACTION_IGNORE;
             }
+        } else if (strcasecmp(evt->header_key, "X-Heard") == 0) {
+            percent_decode(rx->heard, sizeof(rx->heard), evt->header_value);
+        } else if (strcasecmp(evt->header_key, "X-Reply") == 0) {
+            percent_decode(rx->reply, sizeof(rx->reply), evt->header_value);
         }
     } else if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data_len > 0) {
         size_t need = rx->len + evt->data_len;
@@ -72,6 +99,7 @@ esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_
         .user_data = &rx,
         .timeout_ms = REQUEST_TIMEOUT_MS,
         .disable_auto_redirect = true,
+        .buffer_size = 2048,  // headers carry the percent-encoded text
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -91,6 +119,8 @@ esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_
     }
 
     result->action = rx.action;
+    memcpy(result->heard, rx.heard, sizeof(result->heard));
+    memcpy(result->reply, rx.reply, sizeof(result->reply));
     result->audio = (int16_t *)rx.data;
     result->audio_bytes = rx.len & ~(size_t)1;
     return ESP_OK;

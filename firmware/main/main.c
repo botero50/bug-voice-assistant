@@ -12,6 +12,8 @@
 #include "power_manager.h"
 #include "audio_driver.h"
 #include "assistant.h"
+#include "battery.h"
+#include "clock.h"
 #include "network_manager.h"
 #include "wake_word_detector.h"
 #include "audio_circular_buffer.h"
@@ -29,38 +31,71 @@
 
 static const char *TAG = "BUG_MAIN";
 
-// Screen text is plain ASCII: the built-in fonts have no accented letters.
+#define STANDBY_PROMPT "Di “Hola Bug”"
+#define ANSWER_LINGER_MS 10000  // how long an answer stays on screen after it was spoken
+
+static assistant_state_t previous_state = ASSISTANT_STATE_CONNECTING;
+static uint32_t answer_expires_ms = 0;
+
+static uint32_t now_ms(void) {
+    return pdTICKS_TO_MS(xTaskGetTickCount());
+}
+
+static void show_texts(const char *heard, const char *answer) {
+    char quoted[140];
+    if (heard && heard[0]) {
+        snprintf(quoted, sizeof(quoted), "“%s”", heard);
+    } else {
+        quoted[0] = '\0';
+    }
+    ui_home_set_texts(quoted, answer);
+}
+
 static void show_assistant_state(assistant_state_t state) {
+    char heard[128], reply[256];
+    assistant_get_texts(heard, sizeof(heard), reply, sizeof(reply));
+    answer_expires_ms = 0;
+
     switch (state) {
     case ASSISTANT_STATE_NO_CONFIG:
-        ui_home_set_status("Falta WiFi");
-        ui_home_set_ring_color(COLOR_ACCENT_RED);
+        ui_home_set_mode(UI_HOME_ERROR);
+        show_texts("", "Falta configurar el WiFi");
         break;
     case ASSISTANT_STATE_CONNECTING:
-        ui_home_set_status("Conectando");
-        ui_home_set_ring_color(COLOR_ACCENT_GRAY);
+        ui_home_set_mode(UI_HOME_STANDBY);
+        show_texts("", "Conectando al WiFi...");
         break;
     case ASSISTANT_STATE_STANDBY:
-        ui_home_set_status("Di Hola Bug");
-        ui_home_set_ring_color(COLOR_ACCENT_GRAY);
+        ui_home_set_mode(UI_HOME_STANDBY);
+        if (previous_state == ASSISTANT_STATE_SPEAKING) {
+            show_texts(heard, reply);  // keep the last exchange visible for a while
+            answer_expires_ms = now_ms() + ANSWER_LINGER_MS;
+        } else {
+            show_texts("", STANDBY_PROMPT);
+        }
+        break;
+    case ASSISTANT_STATE_HEARING:
+        ui_home_set_mode(UI_HOME_HEARING);
+        show_texts("", "");
         break;
     case ASSISTANT_STATE_LISTENING:
-        ui_home_set_status("Te escucho");
-        ui_home_set_ring_color(COLOR_ACCENT_GREEN);
+        ui_home_set_mode(UI_HOME_LISTENING);
+        show_texts(heard, "Te escucho...");
         break;
     case ASSISTANT_STATE_THINKING:
-        ui_home_set_status("Pensando");
-        ui_home_set_ring_color(COLOR_ACCENT_BLUE);
+        ui_home_set_mode(UI_HOME_THINKING);
+        show_texts(heard, "Pensando...");
         break;
     case ASSISTANT_STATE_SPEAKING:
-        ui_home_set_status("Hablando");
-        ui_home_set_ring_color(COLOR_ACCENT_WHITE);
+        ui_home_set_mode(UI_HOME_SPEAKING);
+        show_texts(heard, reply);
         break;
     case ASSISTANT_STATE_NO_SERVER:
-        ui_home_set_status("Sin servidor");
-        ui_home_set_ring_color(COLOR_ACCENT_RED);
+        ui_home_set_mode(UI_HOME_ERROR);
+        show_texts("", "No encuentro el servidor");
         break;
     }
+    previous_state = state;
 }
 
 void app_main(void) {
@@ -197,39 +232,58 @@ void app_main(void) {
         assistant_start();
     }
 
-    // Main event loop
-    int capture_count = 0;
+    // Main event loop. Everything that touches the screen happens here, because
+    // LVGL isn't thread-safe.
+    uint32_t last_level_ms = 0;
+    uint32_t last_clock_ms = 0;
+    uint32_t last_battery_ms = 0;
+    int last_battery_percent = -2;
 
     while (1) {
+        uint32_t now = now_ms();
+
         if (display_ready) {
             assistant_state_t state;
             if (assistant_take_state(&state)) {
                 show_assistant_state(state);
             }
+
+            if (now - last_level_ms >= 50) {
+                last_level_ms = now;
+                ui_home_push_level(assistant_audio_level());
+            }
+
+            if (now - last_clock_ms >= 1000) {
+                last_clock_ms = now;
+                int hour, minute;
+                if (clock_get(&hour, &minute)) {
+                    ui_update_time(hour, minute);
+                } else {
+                    ui_update_time(99, 0);
+                }
+                ui_update_wifi_status(network_manager_is_connected() == ESP_OK);
+
+                if (answer_expires_ms && now > answer_expires_ms) {
+                    answer_expires_ms = 0;
+                    show_texts("", STANDBY_PROMPT);
+                }
+            }
+
+            if (last_battery_ms == 0 || now - last_battery_ms >= 5000) {
+                last_battery_ms = now;
+                battery_status_t battery;
+                if (battery_read(&battery)) {
+                    ui_update_power(battery.percent, battery.charging);
+                    if (battery.percent != last_battery_percent) {
+                        last_battery_percent = battery.percent;
+                        ESP_LOGI(TAG, "Battery %d%%, charging=%d, USB power=%d", battery.percent, battery.charging,
+                                 battery.usb_power);
+                    }
+                }
+            }
+
             lv_timer_handler();
         }
         vTaskDelay(pdMS_TO_TICKS(10));
-
-        // Periodic logging and power monitoring (about every 20 seconds)
-        if (capture_count++ % 2000 == 0) {
-            PowerState power_state = power_optimizer_get_state();
-            VADState vad_state = vad_get_state();
-
-            ESP_LOGI(TAG, "🔋 Battery: %d%%, Power: %.1f mA, Est. %.1f hours | "
-                         "VAD: energy=%.1f, voice=%s | Boost: %s",
-                     power_state.battery_percent,
-                     power_state.current_draw_ma,
-                     power_state.estimated_hours_remaining,
-                     vad_state.energy_level,
-                     vad_state.voice_detected ? "YES" : "NO",
-                     power_state.boost_converter_on ? "ON" : "GATED");
-
-            // Auto-switch power profile based on battery
-            if (power_state.battery_percent < 5) {
-                power_optimizer_set_profile(PROFILE_GESTURE_ONLY);
-            } else if (power_state.battery_percent < 20) {
-                power_optimizer_set_profile(PROFILE_PERIODIC);
-            }
-        }
     }
 }

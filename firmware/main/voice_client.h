@@ -15,6 +15,8 @@ typedef enum {
 
 typedef struct {
     voice_action_t action;
+    char heard[128];      // What the server understood (UTF-8). Empty when ignored.
+    char reply[256];      // The answer as text (UTF-8)
     int16_t *audio;       // 16 kHz mono PCM, in PSRAM. Release with voice_result_free().
     size_t audio_bytes;
 } voice_result_t;

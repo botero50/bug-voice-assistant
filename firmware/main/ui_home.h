@@ -3,18 +3,23 @@
 
 #include "lvgl.h"
 
-// Home screen creation
+typedef enum {
+    UI_HOME_STANDBY,    // Gray ring breathing slowly
+    UI_HOME_HEARING,    // Green ring, waveform of what the mic hears
+    UI_HOME_LISTENING,  // Same, after the wake word: waiting for the command
+    UI_HOME_THINKING,   // Blue ring with a spinner
+    UI_HOME_SPEAKING,   // White ring pulsing at 2 Hz
+    UI_HOME_ERROR,      // Red ring
+} ui_home_mode_t;
+
 lv_obj_t *ui_create_home_screen(void);
 
-// Replaces the text under the ring
-void ui_home_set_status(const char *text);
+void ui_home_set_mode(ui_home_mode_t mode);
 
-// Colors the ring around the microphone icon
-void ui_home_set_ring_color(lv_color_t color);
+// What the user said (small, gray) and what Bug answers (large). "" clears a line.
+void ui_home_set_texts(const char *heard, const char *answer);
 
-// Animation helpers
-void ui_animate_ring_pulse(lv_obj_t *ring);
-void ui_animate_ring_spin(lv_obj_t *ring);
-void ui_stop_ring_animation(void);
+// Microphone level from 0 to 1, pushed regularly while the waveform is showing.
+void ui_home_push_level(float level);
 
 #endif // UI_HOME_H

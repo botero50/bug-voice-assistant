@@ -16,7 +16,8 @@ void ui_show_voice_feedback(voice_state_t state, const char *text);
 
 // Status bar updates
 void ui_update_battery(uint8_t percent);
-void ui_update_time(uint16_t hour, uint16_t minute);
+void ui_update_power(int percent, bool charging);  // percent < 0 when there's no battery
+void ui_update_time(uint16_t hour, uint16_t minute);  // hour > 23 shows "--:--"
 void ui_update_wifi_status(bool connected);
 void ui_mute_mic(bool muted);
 

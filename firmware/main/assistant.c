@@ -1,6 +1,7 @@
 #include "assistant.h"
 #include "audio_driver.h"
 #include "bug_config.h"
+#include "clock.h"
 #include "network_manager.h"
 #include "voice_client.h"
 #include "esp_heap_caps.h"
@@ -28,9 +29,15 @@ static const char *TAG = "ASSISTANT";
 
 static volatile assistant_state_t current_state = ASSISTANT_STATE_CONNECTING;
 static volatile bool state_changed = true;
+static volatile float audio_level = 0;
 static float noise_floor = 80.0f;
+static char heard_text[128];
+static char reply_text[256];
 
 static void set_state(assistant_state_t state) {
+    if (state == current_state && state_changed) {
+        return;
+    }
     current_state = state;
     state_changed = true;
 }
@@ -44,12 +51,32 @@ bool assistant_take_state(assistant_state_t *state) {
     return true;
 }
 
+float assistant_audio_level(void) {
+    return audio_level;
+}
+
+void assistant_get_texts(char *heard, size_t heard_size, char *reply, size_t reply_size) {
+    strlcpy(heard, heard_text, heard_size);
+    strlcpy(reply, reply_text, reply_size);
+}
+
+static void set_texts(const char *heard, const char *reply) {
+    strlcpy(heard_text, heard, sizeof(heard_text));
+    strlcpy(reply_text, reply, sizeof(reply_text));
+}
+
 static float frame_rms(const int16_t *frame) {
     double sum = 0;
     for (int i = 0; i < FRAME_SAMPLES; i++) {
         sum += (double)frame[i] * frame[i];
     }
     return sqrtf((float)(sum / FRAME_SAMPLES));
+}
+
+// 0 at the room's quiet level, 1 for loud speech (about 30 dB louder).
+static void publish_level(float rms) {
+    float level = 20.0f * log10f(fmaxf(rms, 1.0f) / 100.0f) / 30.0f;
+    audio_level = level < 0 ? 0 : (level > 1 ? 1 : level);
 }
 
 static bool read_frame(int16_t *frame) {
@@ -69,7 +96,8 @@ static void track_noise(float rms) {
 
 // Waits for someone to speak, then records until they pause. Returns the number of
 // samples, or 0 if nothing was said within wait_ms (0 means wait forever).
-static size_t capture_utterance(int16_t *out, uint32_t wait_ms) {
+// speech_state is shown on screen as soon as speech starts.
+static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_t speech_state) {
     static int16_t preroll[PREROLL_FRAMES][FRAME_SAMPLES];
     int16_t frame[FRAME_SAMPLES];
     size_t head = 0;
@@ -78,6 +106,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms) {
     uint32_t log_ms = 0;
     float threshold = 0;
 
+    audio_level = 0;
     for (;;) {
         if (!read_frame(frame)) {
             continue;
@@ -91,6 +120,8 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms) {
 
         if (rms > threshold) {
             ESP_LOGI(TAG, "Speech started: level %.0f, trigger %.0f, room noise %.0f", rms, threshold, noise_floor);
+            publish_level(rms);
+            set_state(speech_state);
             break;
         }
         track_noise(rms);
@@ -124,6 +155,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms) {
         samples += FRAME_SAMPLES;
 
         float rms = frame_rms(frame);
+        publish_level(rms);
         if (rms > threshold * 0.7f) {
             silent_ms = 0;
             loud_frames++;
@@ -135,6 +167,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms) {
             if (level > peak) peak = level;
         }
     }
+    audio_level = 0;
 
     if (loud_frames < MIN_SPEECH_FRAMES) {
         ESP_LOGI(TAG, "Too short to be speech (%d loud frames), ignoring", loud_frames);
@@ -158,6 +191,7 @@ static void chime(void) {
 }
 
 static void speak(const voice_result_t *result) {
+    set_texts(result->heard, result->reply);
     set_state(ASSISTANT_STATE_SPEAKING);
     audio_set_speaker(true);
     vTaskDelay(pdMS_TO_TICKS(30));
@@ -202,12 +236,13 @@ static void assistant_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
     ESP_LOGI(TAG, "Wi-Fi connected. Server: %s", BUG_SERVER_URL);
+    clock_start();
 
     calibrate_noise();
 
     for (;;) {
         set_state(ASSISTANT_STATE_STANDBY);
-        size_t samples = capture_utterance(utterance, 0);
+        size_t samples = capture_utterance(utterance, 0, ASSISTANT_STATE_HEARING);
         if (samples == 0) {
             continue;
         }
@@ -217,26 +252,31 @@ static void assistant_task(void *arg) {
         esp_err_t err = voice_client_listen(false, utterance, samples * sizeof(int16_t), &result);
 
         if (err == ESP_OK && result.action == VOICE_ACTION_WAKE) {
-            ESP_LOGI(TAG, "Wake word heard, waiting for the command");
+            ESP_LOGI(TAG, "Wake word heard (%s), waiting for the command", result.heard);
+            set_texts(result.heard, "");
             voice_result_free(&result);
             chime();
 
             set_state(ASSISTANT_STATE_LISTENING);
-            samples = capture_utterance(utterance, COMMAND_WAIT_MS);
+            samples = capture_utterance(utterance, COMMAND_WAIT_MS, ASSISTANT_STATE_LISTENING);
             if (samples == 0) {
                 ESP_LOGI(TAG, "No command heard, back to standby");
                 continue;
             }
             set_state(ASSISTANT_STATE_THINKING);
             err = voice_client_listen(true, utterance, samples * sizeof(int16_t), &result);
+        } else {
+            set_texts("", "");
         }
 
         if (err != ESP_OK) {
+            set_texts("", "");
             set_state(ASSISTANT_STATE_NO_SERVER);
             vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
         if (result.action == VOICE_ACTION_REPLY) {
+            ESP_LOGI(TAG, "Heard \"%s\", answering \"%s\"", result.heard, result.reply);
             speak(&result);
         }
         voice_result_free(&result);

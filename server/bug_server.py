@@ -166,8 +166,13 @@ def synthesize(text):
 
 
 # ------------------------------------------------------------------- endpoints
-def respond(action, heard="", body=b""):
-    headers = {"X-Action": action, "X-Heard": quote(heard[:200], safe="")}
+def respond(action, heard="", body=b"", reply=""):
+    """Action, then what was understood and answered (percent-encoded so accents survive HTTP).
+    Ignored speech is never sent back, so the board can't display room chatter."""
+    headers = {"X-Action": action}
+    if action != "ignore":
+        headers["X-Heard"] = quote(heard[:120], safe="")
+        headers["X-Reply"] = quote(reply[:240], safe="")
     return Response(body, mimetype="application/octet-stream", headers=headers)
 
 
@@ -194,7 +199,7 @@ def listen():
 
     if mode == "wake":
         if not woke:
-            return respond("ignore", heard)
+            return respond("ignore")
         if not rest:
             return respond("wake", heard)
         command = rest
@@ -204,7 +209,7 @@ def listen():
     answer = run_skill(command)
     audio = synthesize(answer)
     log.info("  command=%r -> %r (total %.1fs)", command, answer, time.time() - started)
-    return respond("reply", heard, audio)
+    return respond("reply", command, audio, answer)
 
 
 if __name__ == "__main__":
