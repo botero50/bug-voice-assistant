@@ -1,5 +1,5 @@
 #include "voice_client.h"
-#include "bug_config.h"
+#include "settings_store.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
@@ -89,8 +89,10 @@ esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_
     result->action = VOICE_ACTION_ERROR;
 
     rx_state_t rx = {.action = VOICE_ACTION_ERROR};
+    bug_settings_t settings;
+    settings_copy(&settings);
     char url[160];
-    snprintf(url, sizeof(url), "%s/listen?mode=%s", BUG_SERVER_URL, command_mode ? "command" : "wake");
+    snprintf(url, sizeof(url), "%s/listen?mode=%s", settings.server_url, command_mode ? "command" : "wake");
 
     esp_http_client_config_t config = {
         .url = url,

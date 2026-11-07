@@ -288,7 +288,9 @@ esp_err_t audio_set_volume(uint8_t volume) {
     if (volume > 100) volume = 100;
 
     // ES8311 DAC volume: 0x00 is -95.5 dB and 0xBF is 0 dB, in 0.5 dB steps.
-    esp_err_t ret = reg_write(ES8311_ADDR, 0x32, (volume * 0xBF) / 100);
+    // The slider spans 0 dB (100%) down to -40 dB (1%); 0% is silence.
+    uint8_t level = volume == 0 ? 0 : 0xBF - (100 - volume) * 80 / 100;
+    esp_err_t ret = reg_write(ES8311_ADDR, 0x32, level);
     if (ret == ESP_OK) {
         current_volume = volume;
     }

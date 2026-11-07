@@ -1,6 +1,6 @@
 #include "ui_core.h"
 #include "ui_config.h"
-#include "ui_home.h"
+#include "ui_nav.h"
 #include "bug_fonts.h"
 #include "lvgl.h"
 #include "esp_log.h"
@@ -23,13 +23,17 @@ static lv_obj_t *transparent_box(lv_obj_t *parent, int width, int height) {
     lv_obj_t *box = lv_obj_create(parent);
     lv_obj_remove_style_all(box);
     lv_obj_set_size(box, width, height);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
     return box;
 }
 
-// Top: wifi and time. Bottom: battery. Both stay inside the round screen's
+// Top: wifi and time. Bottom: battery. They live on LVGL's top layer, so they
+// stay put while the screens underneath change. Both sit in the round screen's
 // narrow ends, so they're small and centered.
 static void ui_create_status_bar(void) {
-    ui_ctx.status_bar = transparent_box(ui_ctx.root_screen, 220, 40);
+    lv_obj_t *layer = lv_layer_top();
+
+    ui_ctx.status_bar = transparent_box(layer, 220, 40);
     lv_obj_align(ui_ctx.status_bar, LV_ALIGN_TOP_MID, 0, 24);
 
     time_label = lv_label_create(ui_ctx.status_bar);
@@ -44,8 +48,8 @@ static void ui_create_status_bar(void) {
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
     lv_obj_align(wifi_label, LV_ALIGN_LEFT_MID, 0, 0);
 
-    ui_ctx.bottom_nav = transparent_box(ui_ctx.root_screen, 160, 28);
-    lv_obj_align(ui_ctx.bottom_nav, LV_ALIGN_BOTTOM_MID, 0, -30);
+    ui_ctx.bottom_nav = transparent_box(layer, 160, 28);
+    lv_obj_align(ui_ctx.bottom_nav, LV_ALIGN_BOTTOM_MID, 0, -26);
 
     battery_label = lv_label_create(ui_ctx.bottom_nav);
     lv_obj_set_style_text_font(battery_label, font_small, 0);
@@ -60,7 +64,7 @@ void ui_init(void) {
     ui_ctx.current_screen = SCREEN_HOME;
     ui_ctx.voice_state = VOICE_STATE_IDLE;
     ui_ctx.battery_percent = 100;
-    ui_ctx.current_hour = 12;
+    ui_ctx.current_hour = 99;
     ui_ctx.current_minute = 0;
     ui_ctx.mic_muted = false;
     ui_ctx.wifi_connected = false;
@@ -75,13 +79,8 @@ void ui_init(void) {
     lv_disp_set_theme(disp, lv_theme_default_init(disp, COLOR_ACCENT_GREEN, COLOR_ACCENT_BLUE, true, font_body));
 
     ui_ctx.root_screen = lv_scr_act();
-    lv_obj_set_size(ui_ctx.root_screen, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-    lv_obj_set_style_bg_color(ui_ctx.root_screen, COLOR_BG_DARK, 0);
-    lv_obj_set_style_bg_opa(ui_ctx.root_screen, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(ui_ctx.root_screen, LV_OBJ_FLAG_SCROLLABLE);
-
     ui_create_status_bar();
-    ui_create_home_screen();
+    ui_nav_start();
 
     ESP_LOGI(TAG, "UI initialization complete");
 }
@@ -91,39 +90,20 @@ void ui_deinit(void) {
 }
 
 void ui_set_screen(screen_state_t screen) {
-    if (ui_ctx.current_screen == screen) {
-        return;
-    }
-
-    ESP_LOGI(TAG, "Switching to screen: %d", screen);
-
-    // Clear the content but keep the status bar and the battery
-    for (int i = (int)lv_obj_get_child_cnt(ui_ctx.root_screen) - 1; i >= 0; i--) {
-        lv_obj_t *child = lv_obj_get_child(ui_ctx.root_screen, i);
-        if (child != ui_ctx.status_bar && child != ui_ctx.bottom_nav) {
-            lv_obj_del(child);
-        }
-    }
-
-    ui_ctx.current_screen = screen;
-
     switch (screen) {
         case SCREEN_HOME:
-            ui_create_home_screen();
+            ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_NONE);
             break;
         case SCREEN_EMAIL_LIST:
-            ui_create_email_list_screen();
+            ui_nav_go(UI_SCREEN_EMAIL, LV_SCR_LOAD_ANIM_NONE);
             break;
         case SCREEN_CALENDAR:
-            ui_create_calendar_screen();
+            ui_nav_go(UI_SCREEN_CALENDAR, LV_SCR_LOAD_ANIM_NONE);
             break;
         case SCREEN_SETTINGS:
-            ui_create_settings_screen();
-            break;
-        case SCREEN_VOICE_FEEDBACK:
+            ui_nav_go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_NONE);
             break;
         default:
-            ESP_LOGW(TAG, "Unknown screen: %d", screen);
             break;
     }
 }
@@ -163,10 +143,13 @@ void ui_update_time(uint16_t hour, uint16_t minute) {
         return;
     }
     if (hour > 23) {
-        lv_label_set_text(time_label, "--:--");
+        if (ui_ctx.current_hour != 99) {
+            ui_ctx.current_hour = 99;
+            lv_label_set_text(time_label, "--:--");
+        }
         return;
     }
-    if (hour == ui_ctx.current_hour && minute == ui_ctx.current_minute && lv_label_get_text(time_label)[0] != '-') {
+    if (hour == ui_ctx.current_hour && minute == ui_ctx.current_minute) {
         return;
     }
     ui_ctx.current_hour = hour;
@@ -188,7 +171,4 @@ void ui_mute_mic(bool muted) {
 
 void ui_show_voice_feedback(voice_state_t state, const char *text) {
     ui_set_voice_state(state);
-    if (text) {
-        ui_home_set_texts(NULL, text);
-    }
 }

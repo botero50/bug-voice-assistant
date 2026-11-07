@@ -3,8 +3,7 @@
 
 #include "lvgl.h"
 
-// Settings screens
-lv_obj_t *ui_create_settings_screen(void);
-lv_obj_t *ui_create_power_profile_selector(void);
+// Brightness, volume, microphone, Wi-Fi, server address and battery.
+lv_obj_t *ui_settings_build(void);
 
-#endif // UI_SETTINGS_H
+#endif

@@ -12,6 +12,8 @@
 #include "power_manager.h"
 #include "audio_driver.h"
 #include "assistant.h"
+#include "settings_store.h"
+#include "ui_nav.h"
 #include "battery.h"
 #include "clock.h"
 #include "network_manager.h"
@@ -36,6 +38,7 @@ static const char *TAG = "BUG_MAIN";
 
 static assistant_state_t previous_state = ASSISTANT_STATE_CONNECTING;
 static uint32_t answer_expires_ms = 0;
+static bool wifi_screen_offered = false;
 
 static uint32_t now_ms(void) {
     return pdTICKS_TO_MS(xTaskGetTickCount());
@@ -56,10 +59,29 @@ static void show_assistant_state(assistant_state_t state) {
     assistant_get_texts(heard, sizeof(heard), reply, sizeof(reply));
     answer_expires_ms = 0;
 
+    if (state == ASSISTANT_STATE_HEARING || state == ASSISTANT_STATE_LISTENING || state == ASSISTANT_STATE_THINKING ||
+        state == ASSISTANT_STATE_SPEAKING) {
+        ui_nav_show_home_for_voice();
+    }
+
     switch (state) {
     case ASSISTANT_STATE_NO_CONFIG:
-        ui_home_set_mode(UI_HOME_ERROR);
-        show_texts("", "Falta configurar el WiFi");
+        ui_home_set_mode(UI_HOME_SETUP);
+        show_texts("", "Toca el círculo para configurar el WiFi");
+        if (!wifi_screen_offered && ui_nav_current() == UI_SCREEN_HOME) {
+            wifi_screen_offered = true;  // first time only: take the user straight to the list
+            ui_nav_go(UI_SCREEN_WIFI, LV_SCR_LOAD_ANIM_MOVE_LEFT);
+        }
+        break;
+    case ASSISTANT_STATE_WIFI_ERROR:
+        ui_home_set_mode(UI_HOME_SETUP);
+        show_texts("", network_manager_last_error() == NET_ERR_PASSWORD ? "Contraseña de WiFi incorrecta. Toca el círculo"
+                       : network_manager_last_error() == NET_ERR_NOT_FOUND ? "No encuentro tu red WiFi. Toca el círculo"
+                                                                           : "No pude conectar al WiFi. Toca el círculo");
+        break;
+    case ASSISTANT_STATE_MUTED:
+        ui_home_set_mode(UI_HOME_MUTED);
+        show_texts("", "Micrófono apagado");
         break;
     case ASSISTANT_STATE_CONNECTING:
         ui_home_set_mode(UI_HOME_STANDBY);
@@ -113,6 +135,9 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "✓ NVS initialized");
+    settings_load();
+    bug_settings_t settings;
+    settings_copy(&settings);
 
     // Initialize the display first: its buffers need DMA-capable internal RAM,
     // which later startup steps use up.
@@ -124,6 +149,7 @@ void app_main(void) {
         // Initialize UI (LVGL for 466x466 circular AMOLED display)
         ESP_LOGI(TAG, "Initializing UI system...");
         ui_init();
+        display_set_brightness(settings.brightness);
         lv_timer_handler();
         ESP_LOGI(TAG, "✓ UI system ready (dark theme, 466x466 circular AMOLED)");
     } else {
@@ -147,6 +173,7 @@ void app_main(void) {
     if (!audio_ready) {
         ESP_LOGE(TAG, "✗ Audio initialization failed - continuing without audio");
     } else {
+        audio_set_volume(settings.volume);
         ESP_LOGI(TAG, "✓ Audio driver ready");
     }
 

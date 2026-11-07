@@ -1,218 +1,173 @@
-#include <math.h>
 #include "ui_settings.h"
+#include "assistant.h"
+#include "audio_driver.h"
+#include "battery.h"
+#include "bug_fonts.h"
+#include "display_driver.h"
+#include "settings_store.h"
 #include "ui_config.h"
-#include "lvgl.h"
+#include "ui_nav.h"
+#include "ui_text_entry.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "UI_SETTINGS";
 
-lv_obj_t *ui_create_settings_screen(void) {
-    ESP_LOGI(TAG, "Creating settings screen");
+// Six rows fit between the clock and the battery without scrolling, so swiping up
+// always means "go back".
+#define ROW_WIDTH 300
+#define ROW_HEIGHT 40
+#define ROW_TOP 76
+#define ROW_STEP 46
+#define ROW_COLOR lv_color_make(30, 30, 30)
 
-    lv_obj_t *root = lv_scr_act();
+static lv_obj_t *make_row(lv_obj_t *parent, int index, const char *name) {
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, ROW_WIDTH, ROW_HEIGHT);
+    lv_obj_set_style_radius(row, 10, 0);
+    lv_obj_set_style_bg_color(row, ROW_COLOR, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, ROW_TOP + index * ROW_STEP);
 
-    // Main container
-    lv_obj_t *container = lv_obj_create(root);
-    lv_obj_set_size(container, 400, 380);
-    lv_obj_set_pos(container, 33, 40);
-    lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
-
-    // Header with back button
-    lv_obj_t *header = lv_obj_create(container);
-    lv_obj_set_size(header, 390, 30);
-    lv_obj_set_pos(header, 5, 0);
-    lv_obj_set_style_bg_opa(header, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(header, LV_OPA_0, 0);
-
-    lv_obj_t *back_btn = lv_btn_create(header);
-    lv_obj_set_size(back_btn, 30, 30);
-    lv_obj_set_pos(back_btn, 0, 0);
-    lv_obj_set_style_bg_opa(back_btn, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(back_btn, LV_OPA_0, 0);
-
-    lv_obj_t *back_label = lv_label_create(back_btn);
-    lv_label_set_text(back_label, "↶");
-    lv_obj_center(back_label);
-    lv_obj_set_style_text_color(back_label, COLOR_TEXT_SECONDARY, 0);
-
-    lv_obj_t *title = lv_label_create(header);
-    lv_label_set_text(title, "Settings");
-    lv_obj_set_pos(title, 40, 5);
-    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-
-    // Settings list
-    lv_obj_t *list = lv_obj_create(container);
-    lv_obj_set_size(list, 390, 330);
-    lv_obj_set_pos(list, 5, 40);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(list, LV_OPA_0, 0);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
-
-    int y_pos = 0;
-
-    // Brightness setting
-    lv_obj_t *bright_label = lv_label_create(list);
-    lv_label_set_text(bright_label, "☀ Brightness");
-    lv_obj_set_pos(bright_label, 10, y_pos);
-    lv_obj_set_style_text_color(bright_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(bright_label, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *bright_slider = lv_slider_create(list);
-    lv_obj_set_size(bright_slider, 300, 20);
-    lv_obj_set_pos(bright_slider, 10, y_pos + 20);
-    lv_slider_set_range(bright_slider, 10, 100);
-    lv_slider_set_value(bright_slider, 70, LV_ANIM_OFF);
-
-    y_pos += 50;
-
-    // Volume setting
-    lv_obj_t *vol_label = lv_label_create(list);
-    lv_label_set_text(vol_label, "🔊 Volume");
-    lv_obj_set_pos(vol_label, 10, y_pos);
-    lv_obj_set_style_text_color(vol_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(vol_label, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *vol_slider = lv_slider_create(list);
-    lv_obj_set_size(vol_slider, 300, 20);
-    lv_obj_set_pos(vol_slider, 10, y_pos + 20);
-    lv_slider_set_range(vol_slider, 0, 100);
-    lv_slider_set_value(vol_slider, 80, LV_ANIM_OFF);
-
-    y_pos += 50;
-
-    // Microphone toggle
-    lv_obj_t *mic_label = lv_label_create(list);
-    lv_label_set_text(mic_label, "🎤 Microphone");
-    lv_obj_set_pos(mic_label, 10, y_pos);
-    lv_obj_set_style_text_color(mic_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(mic_label, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *mic_toggle = lv_btn_create(list);
-    lv_obj_set_size(mic_toggle, 60, 30);
-    lv_obj_set_pos(mic_toggle, 300, y_pos);
-    lv_obj_set_style_bg_color(mic_toggle, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_bg_opa(mic_toggle, LV_OPA_30, 0);
-    lv_obj_set_style_border_opa(mic_toggle, LV_OPA_0, 0);
-    lv_obj_set_style_radius(mic_toggle, LV_RADIUS_CIRCLE, 0);
-
-    lv_obj_t *toggle_text = lv_label_create(mic_toggle);
-    lv_label_set_text(toggle_text, "◉");
-    lv_obj_center(toggle_text);
-    lv_obj_set_style_text_color(toggle_text, COLOR_ACCENT_GREEN, 0);
-
-    y_pos += 45;
-
-    // Power profile
-    lv_obj_t *power_label = lv_label_create(list);
-    lv_label_set_text(power_label, "⚡ Power Profile");
-    lv_obj_set_pos(power_label, 10, y_pos);
-    lv_obj_set_style_text_color(power_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(power_label, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *power_value = lv_label_create(list);
-    lv_label_set_text(power_value, "Always-Listening");
-    lv_obj_set_pos(power_value, 10, y_pos + 20);
-    lv_obj_set_style_text_color(power_value, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(power_value, &lv_font_montserrat_12, 0);
-
-    y_pos += 50;
-
-    // WiFi toggle
-    lv_obj_t *wifi_label = lv_label_create(list);
-    lv_label_set_text(wifi_label, "🌐 WiFi");
-    lv_obj_set_pos(wifi_label, 10, y_pos);
-    lv_obj_set_style_text_color(wifi_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(wifi_label, &lv_font_montserrat_14, 0);
-
-    lv_obj_t *wifi_toggle = lv_btn_create(list);
-    lv_obj_set_size(wifi_toggle, 60, 30);
-    lv_obj_set_pos(wifi_toggle, 300, y_pos);
-    lv_obj_set_style_bg_color(wifi_toggle, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_bg_opa(wifi_toggle, LV_OPA_30, 0);
-    lv_obj_set_style_border_opa(wifi_toggle, LV_OPA_0, 0);
-    lv_obj_set_style_radius(wifi_toggle, LV_RADIUS_CIRCLE, 0);
-
-    lv_obj_t *wifi_text = lv_label_create(wifi_toggle);
-    lv_label_set_text(wifi_text, "◉");
-    lv_obj_center(wifi_text);
-    lv_obj_set_style_text_color(wifi_text, COLOR_ACCENT_GREEN, 0);
-
-    y_pos += 45;
-
-    // Battery indicator
-    lv_obj_t *battery_label = lv_label_create(list);
-    lv_label_set_text(battery_label, "🔋 Battery: 73%");
-    lv_obj_set_pos(battery_label, 10, y_pos);
-    lv_obj_set_style_text_color(battery_label, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_text_font(battery_label, &lv_font_montserrat_14, 0);
-
-    ESP_LOGI(TAG, "Settings screen created");
-
-    return root;
+    lv_obj_t *label = lv_label_create(row);
+    lv_label_set_text(label, name);
+    lv_obj_set_style_text_font(label, bug_font_small, 0);
+    lv_obj_set_style_text_color(label, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 14, 0);
+    return row;
 }
 
-lv_obj_t *ui_create_power_profile_selector(void) {
-    ESP_LOGI(TAG, "Creating power profile selector");
+static lv_obj_t *add_value_label(lv_obj_t *row, const char *text, int width) {
+    lv_obj_t *label = lv_label_create(row);
+    lv_obj_set_width(label, width);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, bug_font_small, 0);
+    lv_obj_set_style_text_color(label, COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(label, LV_ALIGN_RIGHT_MID, -14, 0);
+    return label;
+}
 
-    lv_obj_t *root = lv_scr_act();
+static lv_obj_t *add_slider(lv_obj_t *row, int min, int max, int value, lv_event_cb_t callback) {
+    lv_obj_t *slider = lv_slider_create(row);
+    lv_obj_set_size(slider, 130, 12);
+    lv_obj_align(slider, LV_ALIGN_RIGHT_MID, -18, 0);
+    lv_obj_set_ext_click_area(slider, 14);
+    lv_slider_set_range(slider, min, max);
+    lv_slider_set_value(slider, value, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(slider, lv_color_make(70, 70, 70), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(slider, COLOR_ACCENT_GREEN, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(slider, COLOR_TEXT_PRIMARY, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(slider, 6, LV_PART_KNOB);
+    lv_obj_add_event_cb(slider, callback, LV_EVENT_ALL, NULL);
+    return slider;
+}
 
-    // Main container
-    lv_obj_t *container = lv_obj_create(root);
-    lv_obj_set_size(container, 380, 350);
-    lv_obj_set_pos(container, 43, 50);
-    lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
-
-    // Title
-    lv_obj_t *title = lv_label_create(container);
-    lv_label_set_text(title, "Power Profile");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-
-    // Circular menu with three options
-    const char *profiles[] = {"Always\nListening", "Periodic\nWake", "Gesture\nOnly"};
-    const int angles[] = {270, 30, 150};  // 12 o'clock, 1 o'clock, 5 o'clock
-
-    for (int i = 0; i < 3; i++) {
-        lv_obj_t *btn = lv_btn_create(container);
-        lv_obj_set_size(btn, 80, 80);
-        lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(btn, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_bg_opa(btn, i == 0 ? LV_OPA_30 : LV_OPA_10, 0);  // First selected
-        lv_obj_set_style_border_color(btn, COLOR_ACCENT_GREEN, 0);
-        lv_obj_set_style_border_width(btn, i == 0 ? 2 : 1, 0);
-        lv_obj_set_style_border_opa(btn, LV_OPA_50, 0);
-
-        // Position in circle: radius 100px around center
-        int x = 150 + (int)(100 * cosf((angles[i] - 90) * M_PI / 180.0)) - 40;
-        int y = 150 + (int)(100 * sinf((angles[i] - 90) * M_PI / 180.0)) - 40;
-        lv_obj_set_pos(btn, x, y);
-
-        lv_obj_t *label = lv_label_create(btn);
-        lv_label_set_text(label, profiles[i]);
-        lv_obj_center(label);
-        lv_obj_set_style_text_color(label, i == 0 ? COLOR_ACCENT_GREEN : COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_12, 0);
+static void brightness_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    int value = lv_slider_get_value(slider);
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        display_set_brightness(value);
+    } else if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
+        settings_set_brightness(value);
     }
+}
 
-    // Center label
-    lv_obj_t *center_label = lv_label_create(container);
-    lv_label_set_text(center_label, "Power\nProfile");
-    lv_obj_align(center_label, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_text_color(center_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(center_label, &lv_font_montserrat_14, 0);
+static void volume_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    int value = lv_slider_get_value(slider);
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        audio_set_volume(value);
+    } else if (lv_event_get_code(e) == LV_EVENT_RELEASED) {
+        settings_set_volume(value);
+        audio_set_speaker(true);  // a short beep so the new level can be heard
+        vTaskDelay(pdMS_TO_TICKS(20));
+        audio_beep(660.0f, 140);
+        vTaskDelay(pdMS_TO_TICKS(40));
+        audio_set_speaker(false);
+    }
+}
 
-    // Helper text
-    lv_obj_t *helper = lv_label_create(container);
-    lv_label_set_text(helper, "Swipe to select\nVoice: say profile");
-    lv_obj_align(helper, LV_ALIGN_BOTTOM_MID, 0, -10);
-    lv_obj_set_style_text_color(helper, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(helper, &lv_font_montserrat_10, 0);
+static void mic_cb(lv_event_t *e) {
+    bool on = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    settings_set_mic_muted(!on);
+    assistant_set_muted(!on);
+}
 
-    ESP_LOGI(TAG, "Power profile selector created");
+static void wifi_row_cb(lv_event_t *e) {
+    if (ui_nav_click_allowed()) {
+        ui_nav_go(UI_SCREEN_WIFI, LV_SCR_LOAD_ANIM_MOVE_LEFT);
+    }
+}
 
-    return root;
+static void server_done(bool accepted, const char *text) {
+    if (!accepted || !text[0]) {
+        return;
+    }
+    char url[96];
+    snprintf(url, sizeof(url), "http://%s%s", text, strchr(text, ':') ? "" : ":5000");
+    settings_set_server_url(url);
+    ESP_LOGI(TAG, "Server address set to %s", url);
+}
+
+static void server_row_cb(lv_event_t *e) {
+    if (!ui_nav_click_allowed()) {
+        return;
+    }
+    bug_settings_t settings;
+    settings_copy(&settings);
+    const char *address = strstr(settings.server_url, "://");
+    address = address ? address + 3 : settings.server_url;
+    ui_text_entry_open("Dirección del servidor (IP:puerto)", address, false, UI_SCREEN_SETTINGS, server_done);
+}
+
+lv_obj_t *ui_settings_build(void) {
+    lv_obj_t *screen = lv_obj_create(NULL);
+    bug_settings_t settings;
+    settings_copy(&settings);
+
+    lv_obj_t *row = make_row(screen, 0, LV_SYMBOL_EYE_OPEN "  Brillo");
+    add_slider(row, 10, 100, settings.brightness, brightness_cb);
+
+    row = make_row(screen, 1, LV_SYMBOL_VOLUME_MAX "  Volumen");
+    add_slider(row, 0, 100, settings.volume, volume_cb);
+
+    row = make_row(screen, 2, LV_SYMBOL_AUDIO "  Micrófono");
+    lv_obj_t *mic = lv_switch_create(row);
+    lv_obj_set_size(mic, 50, 26);
+    lv_obj_align(mic, LV_ALIGN_RIGHT_MID, -14, 0);
+    lv_obj_set_style_bg_color(mic, COLOR_ACCENT_GREEN, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (!settings.mic_muted) {
+        lv_obj_add_state(mic, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(mic, mic_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    row = make_row(screen, 3, LV_SYMBOL_WIFI "  WiFi");
+    add_value_label(row, settings.wifi_ssid[0] ? settings.wifi_ssid : "Sin red", 150);
+    lv_obj_add_event_cb(row, wifi_row_cb, LV_EVENT_SHORT_CLICKED, NULL);
+
+    row = make_row(screen, 4, "Servidor");
+    const char *address = strstr(settings.server_url, "://");
+    add_value_label(row, address ? address + 3 : settings.server_url, 170);
+    lv_obj_add_event_cb(row, server_row_cb, LV_EVENT_SHORT_CLICKED, NULL);
+
+    row = make_row(screen, 5, LV_SYMBOL_BATTERY_FULL "  Batería");
+    battery_status_t battery;
+    char battery_text[40] = "--";
+    if (battery_read(&battery) && battery.percent >= 0) {
+        snprintf(battery_text, sizeof(battery_text), "%d%%%s", battery.percent, battery.charging ? "  cargando" : "");
+    }
+    add_value_label(row, battery_text, 170);
+
+    lv_obj_t *hint = lv_label_create(screen);
+    lv_label_set_text(hint, "Desliza hacia arriba para volver");
+    lv_obj_set_style_text_font(hint, bug_font_small, 0);
+    lv_obj_set_style_text_color(hint, lv_color_make(110, 110, 110), 0);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, ROW_TOP + 6 * ROW_STEP + 2);
+    return screen;
 }

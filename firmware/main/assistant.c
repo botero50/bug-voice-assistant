@@ -1,8 +1,8 @@
 #include "assistant.h"
 #include "audio_driver.h"
-#include "bug_config.h"
 #include "clock.h"
 #include "network_manager.h"
+#include "settings_store.h"
 #include "voice_client.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -30,9 +30,19 @@ static const char *TAG = "ASSISTANT";
 static volatile assistant_state_t current_state = ASSISTANT_STATE_CONNECTING;
 static volatile bool state_changed = true;
 static volatile float audio_level = 0;
+static volatile bool wifi_dirty = false;
+static volatile bool listen_now_request = false;
+static volatile bool muted = false;
 static float noise_floor = 80.0f;
 static char heard_text[128];
 static char reply_text[256];
+
+typedef struct {
+    char heard[128];
+    char reply[256];
+} exchange_t;
+static exchange_t history[ASSISTANT_HISTORY_SIZE];
+static int history_count = 0;
 
 static void set_state(assistant_state_t state) {
     if (state == current_state && state_changed) {
@@ -58,6 +68,36 @@ float assistant_audio_level(void) {
 void assistant_get_texts(char *heard, size_t heard_size, char *reply, size_t reply_size) {
     strlcpy(heard, heard_text, heard_size);
     strlcpy(reply, reply_text, reply_size);
+}
+
+void assistant_wifi_changed(void) {
+    wifi_dirty = true;
+}
+
+void assistant_listen_now(void) {
+    if (current_state == ASSISTANT_STATE_STANDBY) {
+        listen_now_request = true;
+    }
+}
+
+void assistant_set_muted(bool value) {
+    muted = value;
+}
+
+bool assistant_history_get(int index, char *heard, size_t heard_size, char *reply, size_t reply_size) {
+    if (index < 0 || index >= history_count) {
+        return false;
+    }
+    strlcpy(heard, history[index].heard, heard_size);
+    strlcpy(reply, history[index].reply, reply_size);
+    return true;
+}
+
+static void remember_exchange(const char *heard, const char *reply) {
+    memmove(&history[1], &history[0], sizeof(exchange_t) * (ASSISTANT_HISTORY_SIZE - 1));
+    strlcpy(history[0].heard, heard, sizeof(history[0].heard));
+    strlcpy(history[0].reply, reply, sizeof(history[0].reply));
+    if (history_count < ASSISTANT_HISTORY_SIZE) history_count++;
 }
 
 static void set_texts(const char *heard, const char *reply) {
@@ -95,9 +135,10 @@ static void track_noise(float rms) {
 }
 
 // Waits for someone to speak, then records until they pause. Returns the number of
-// samples, or 0 if nothing was said within wait_ms (0 means wait forever).
+// samples, or 0 if nothing was said within wait_ms (0 means wait forever), or if
+// `interruptible` and a tap or the mute switch asked for something else.
 // speech_state is shown on screen as soon as speech starts.
-static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_t speech_state) {
+static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_t speech_state, bool interruptible) {
     static int16_t preroll[PREROLL_FRAMES][FRAME_SAMPLES];
     int16_t frame[FRAME_SAMPLES];
     size_t head = 0;
@@ -105,6 +146,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
     uint32_t waited_ms = 0;
     uint32_t log_ms = 0;
     float threshold = 0;
+    bool muted_at_start = muted;
 
     audio_level = 0;
     for (;;) {
@@ -114,11 +156,15 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
         float rms = frame_rms(frame);
         threshold = fmaxf(noise_floor * NOISE_MULTIPLIER, MIN_THRESHOLD);
 
+        if (interruptible && (listen_now_request || muted != muted_at_start)) {
+            return 0;
+        }
+
         memcpy(preroll[head], frame, sizeof(frame));
         head = (head + 1) % PREROLL_FRAMES;
         if (filled < PREROLL_FRAMES) filled++;
 
-        if (rms > threshold) {
+        if (rms > threshold && !muted) {
             ESP_LOGI(TAG, "Speech started: level %.0f, trigger %.0f, room noise %.0f", rms, threshold, noise_floor);
             publish_level(rms);
             set_state(speech_state);
@@ -214,6 +260,66 @@ static void calibrate_noise(void) {
     ESP_LOGI(TAG, "Room noise level: %.0f", noise_floor);
 }
 
+// Keeps trying until the saved network is joined. Returns early to start over
+// whenever the Wi-Fi settings change.
+static void wait_for_wifi(void) {
+    for (;;) {
+        bug_settings_t settings;
+        settings_copy(&settings);
+
+        if (!settings.wifi_ssid[0]) {
+            ESP_LOGI(TAG, "No Wi-Fi saved yet");
+            set_state(ASSISTANT_STATE_NO_CONFIG);
+            wifi_dirty = false;
+            while (!wifi_dirty) {
+                vTaskDelay(pdMS_TO_TICKS(200));
+            }
+            continue;
+        }
+
+        wifi_dirty = false;
+        set_state(ASSISTANT_STATE_CONNECTING);
+        esp_err_t err = network_manager_connect_wifi(settings.wifi_ssid, settings.wifi_password);
+        if (err != ESP_OK && network_manager_last_error() != NET_ERR_NONE) {
+            set_state(ASSISTANT_STATE_WIFI_ERROR);
+        }
+        while (network_manager_is_connected() != ESP_OK && !wifi_dirty) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        if (wifi_dirty) {
+            continue;
+        }
+        return;
+    }
+}
+
+// The wake word was heard (or the ring was tapped): listen for the command and answer it.
+static void handle_command(int16_t *utterance) {
+    chime();
+    set_state(ASSISTANT_STATE_LISTENING);
+    size_t samples = capture_utterance(utterance, COMMAND_WAIT_MS, ASSISTANT_STATE_LISTENING, false);
+    if (samples == 0) {
+        ESP_LOGI(TAG, "No command heard, back to standby");
+        return;
+    }
+
+    set_state(ASSISTANT_STATE_THINKING);
+    voice_result_t result;
+    esp_err_t err = voice_client_listen(true, utterance, samples * sizeof(int16_t), &result);
+    if (err != ESP_OK) {
+        set_texts("", "");
+        set_state(ASSISTANT_STATE_NO_SERVER);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        return;
+    }
+    if (result.action == VOICE_ACTION_REPLY) {
+        ESP_LOGI(TAG, "Heard \"%s\", answering \"%s\"", result.heard, result.reply);
+        remember_exchange(result.heard, result.reply);
+        speak(&result);
+    }
+    voice_result_free(&result);
+}
+
 static void assistant_task(void *arg) {
     int16_t *utterance = heap_caps_malloc(MAX_UTTERANCE_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
     if (!utterance) {
@@ -222,27 +328,27 @@ static void assistant_task(void *arg) {
         return;
     }
 
-    if (strlen(BUG_WIFI_SSID) == 0) {
-        ESP_LOGW(TAG, "No Wi-Fi name set. Fill in bug_config.local.h and flash again.");
-        set_state(ASSISTANT_STATE_NO_CONFIG);
-        vTaskDelete(NULL);
-        return;
-    }
+    bug_settings_t settings;
+    settings_copy(&settings);
+    muted = settings.mic_muted;
 
-    set_state(ASSISTANT_STATE_CONNECTING);
-    network_manager_connect_wifi(BUG_WIFI_SSID, BUG_WIFI_PASSWORD);
-    while (network_manager_is_connected() != ESP_OK) {
-        ESP_LOGI(TAG, "Waiting for Wi-Fi...");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-    ESP_LOGI(TAG, "Wi-Fi connected. Server: %s", BUG_SERVER_URL);
+    wait_for_wifi();
+    ESP_LOGI(TAG, "Wi-Fi connected. Server: %s", settings.server_url);
     clock_start();
-
     calibrate_noise();
 
     for (;;) {
-        set_state(ASSISTANT_STATE_STANDBY);
-        size_t samples = capture_utterance(utterance, 0, ASSISTANT_STATE_HEARING);
+        set_state(muted ? ASSISTANT_STATE_MUTED : ASSISTANT_STATE_STANDBY);
+        size_t samples = capture_utterance(utterance, 0, ASSISTANT_STATE_HEARING, true);
+
+        if (listen_now_request) {
+            listen_now_request = false;
+            if (!muted) {
+                set_texts("", "");
+                handle_command(utterance);
+            }
+            continue;
+        }
         if (samples == 0) {
             continue;
         }
@@ -250,36 +356,27 @@ static void assistant_task(void *arg) {
         set_state(ASSISTANT_STATE_THINKING);
         voice_result_t result;
         esp_err_t err = voice_client_listen(false, utterance, samples * sizeof(int16_t), &result);
-
-        if (err == ESP_OK && result.action == VOICE_ACTION_WAKE) {
-            ESP_LOGI(TAG, "Wake word heard (%s), waiting for the command", result.heard);
-            set_texts(result.heard, "");
-            voice_result_free(&result);
-            chime();
-
-            set_state(ASSISTANT_STATE_LISTENING);
-            samples = capture_utterance(utterance, COMMAND_WAIT_MS, ASSISTANT_STATE_LISTENING);
-            if (samples == 0) {
-                ESP_LOGI(TAG, "No command heard, back to standby");
-                continue;
-            }
-            set_state(ASSISTANT_STATE_THINKING);
-            err = voice_client_listen(true, utterance, samples * sizeof(int16_t), &result);
-        } else {
-            set_texts("", "");
-        }
-
         if (err != ESP_OK) {
             set_texts("", "");
             set_state(ASSISTANT_STATE_NO_SERVER);
             vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
-        if (result.action == VOICE_ACTION_REPLY) {
+
+        if (result.action == VOICE_ACTION_WAKE) {
+            ESP_LOGI(TAG, "Wake word heard (%s), waiting for the command", result.heard);
+            set_texts(result.heard, "");
+            voice_result_free(&result);
+            handle_command(utterance);
+        } else if (result.action == VOICE_ACTION_REPLY) {
             ESP_LOGI(TAG, "Heard \"%s\", answering \"%s\"", result.heard, result.reply);
+            remember_exchange(result.heard, result.reply);
             speak(&result);
+            voice_result_free(&result);
+        } else {
+            set_texts("", "");
+            voice_result_free(&result);
         }
-        voice_result_free(&result);
     }
 }
 

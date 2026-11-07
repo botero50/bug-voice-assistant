@@ -1,4 +1,5 @@
 #include "display_driver.h"
+#include "touch_driver.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
@@ -187,6 +188,9 @@ esp_err_t display_init(void) {
 
     lv_disp_drv_register(&disp_drv);
 
+    if (touch_init() != ESP_OK) {
+        ESP_LOGW(TAG, "Touch controller not available");
+    }
     lv_indev_drv_init(&indev_drv);
     indev_drv.type = LV_INDEV_TYPE_POINTER;
     indev_drv.read_cb = display_read_touch_cb;
@@ -241,6 +245,9 @@ void display_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *col
 }
 
 void display_read_touch_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
-    // The CST9217 touch controller isn't connected yet.
-    data->state = LV_INDEV_STATE_RELEASED;
+    uint16_t x, y;
+    bool down = touch_read(&x, &y);
+    data->point.x = x;  // LVGL wants the last position on release too
+    data->point.y = y;
+    data->state = down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 }

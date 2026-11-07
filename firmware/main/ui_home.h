@@ -9,11 +9,16 @@ typedef enum {
     UI_HOME_LISTENING,  // Same, after the wake word: waiting for the command
     UI_HOME_THINKING,   // Blue ring with a spinner
     UI_HOME_SPEAKING,   // White ring pulsing at 2 Hz
+    UI_HOME_MUTED,      // Microphone off
+    UI_HOME_SETUP,      // Amber: Wi-Fi needs attention, tapping the ring opens the list
     UI_HOME_ERROR,      // Red ring
 } ui_home_mode_t;
 
-lv_obj_t *ui_create_home_screen(void);
+// Builds the home screen (not yet shown). The ring reacts to taps: a tap listens
+// right away, a long press mutes the microphone.
+lv_obj_t *ui_home_build(void);
 
+// These remember the latest values, so the screen is right when it is built again.
 void ui_home_set_mode(ui_home_mode_t mode);
 
 // What the user said (small, gray) and what Bug answers (large). "" clears a line.
