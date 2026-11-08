@@ -123,6 +123,10 @@ static void apply_mode(void) {
         lv_obj_set_style_bg_color(ring, COLOR_ACCENT_GRAY, 0);
         lv_obj_set_style_bg_opa(ring, LV_OPA_40, 0);
         break;
+    case UI_HOME_MUSIC:
+        lv_obj_set_style_bg_color(ring, lv_color_make(150, 90, 230), 0);
+        ring_pulse(130, 255, 900);
+        break;
     case UI_HOME_SETUP:
         lv_obj_set_style_bg_color(ring, COLOR_SETUP, 0);
         ring_pulse(120, 255, 700);

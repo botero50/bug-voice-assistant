@@ -10,6 +10,7 @@ typedef enum {
     UI_HOME_THINKING,   // Blue ring with a spinner
     UI_HOME_SPEAKING,   // White ring pulsing at 2 Hz
     UI_HOME_MUTED,      // Microphone off
+    UI_HOME_MUSIC,      // Purple ring: the radio is playing, tap the ring to talk
     UI_HOME_SETUP,      // Amber: Wi-Fi needs attention, tapping the ring opens the list
     UI_HOME_ERROR,      // Red ring
 } ui_home_mode_t;

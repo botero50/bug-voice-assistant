@@ -20,6 +20,7 @@ typedef struct {
     voice_action_t action;
     char heard[128];
     char reply[256];
+    char screen[160];
     bool failed;
 } rx_state_t;
 
@@ -31,7 +32,7 @@ static int hex_value(char c) {
 }
 
 // Headers arrive percent-encoded ("Qu%C3%A9") so accents survive HTTP.
-static void percent_decode(char *dst, size_t cap, const char *src) {
+void voice_client_percent_decode(char *dst, size_t cap, const char *src) {
     size_t out = 0;
     while (*src && out + 1 < cap) {
         if (src[0] == '%' && hex_value(src[1]) >= 0 && hex_value(src[2]) >= 0) {
@@ -57,9 +58,11 @@ static esp_err_t on_http_event(esp_http_client_event_t *evt) {
                 rx->action = VOICE_ACTION_IGNORE;
             }
         } else if (strcasecmp(evt->header_key, "X-Heard") == 0) {
-            percent_decode(rx->heard, sizeof(rx->heard), evt->header_value);
+            voice_client_percent_decode(rx->heard, sizeof(rx->heard), evt->header_value);
         } else if (strcasecmp(evt->header_key, "X-Reply") == 0) {
-            percent_decode(rx->reply, sizeof(rx->reply), evt->header_value);
+            voice_client_percent_decode(rx->reply, sizeof(rx->reply), evt->header_value);
+        } else if (strcasecmp(evt->header_key, "X-Screen") == 0) {
+            voice_client_percent_decode(rx->screen, sizeof(rx->screen), evt->header_value);
         }
     } else if (evt->event_id == HTTP_EVENT_ON_DATA && evt->data_len > 0) {
         size_t need = rx->len + evt->data_len;
@@ -123,8 +126,50 @@ esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_
     result->action = rx.action;
     memcpy(result->heard, rx.heard, sizeof(result->heard));
     memcpy(result->reply, rx.reply, sizeof(result->reply));
+    memcpy(result->screen, rx.screen, sizeof(result->screen));
     result->audio = (int16_t *)rx.data;
     result->audio_bytes = rx.len & ~(size_t)1;
+    return ESP_OK;
+}
+
+esp_err_t voice_client_fetch_screen(const char *path, char **json) {
+    *json = NULL;
+
+    bug_settings_t settings;
+    settings_copy(&settings);
+    char url[200];
+    snprintf(url, sizeof(url), "%s/screen/%s", settings.server_url, path);
+
+    rx_state_t rx = {.action = VOICE_ACTION_IGNORE};
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_GET,
+        .event_handler = on_http_event,
+        .user_data = &rx,
+        .timeout_ms = 10000,
+        .disable_auto_redirect = true,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        return ESP_FAIL;
+    }
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (err != ESP_OK || status != 200 || rx.failed || rx.len == 0) {
+        ESP_LOGW(TAG, "Could not fetch screen %s: %s, HTTP %d", path, esp_err_to_name(err), status);
+        heap_caps_free(rx.data);
+        return err != ESP_OK ? err : ESP_FAIL;
+    }
+
+    char *text = heap_caps_realloc(rx.data, rx.len + 1, MALLOC_CAP_SPIRAM);
+    if (!text) {
+        heap_caps_free(rx.data);
+        return ESP_ERR_NO_MEM;
+    }
+    text[rx.len] = '\0';
+    *json = text;
     return ESP_OK;
 }
 

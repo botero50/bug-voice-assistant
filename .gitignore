@@ -29,3 +29,12 @@ firmware/sdkconfig.old
 
 # Private Wi-Fi settings for the board
 firmware/main/bug_config.local.h
+
+# Personal data the server saves: your chosen city, your timers and alarms
+server/user_settings.json
+server/timers.json
+
+# Private calendar links (a secret iCal address is a password to the agenda)
+server/calendar_sources.txt
+server/test_data/
+server/reading_state.json

@@ -1,200 +1,210 @@
 #include "ui_email.h"
+#include "bug_fonts.h"
 #include "ui_config.h"
-#include "lvgl.h"
+#include "ui_nav.h"
+#include "cJSON.h"
 #include "esp_log.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "UI_EMAIL";
 
-// Mock email data for demo
-static const struct {
-    const char *sender;
-    const char *subject;
-    const char *time;
+#define MAX_EMAILS 6
+#define VISIBLE_EMAILS 4   // the list never scrolls, so swiping up always means "back"
+#define CARD_WIDTH 300
+#define CARD_HEIGHT 58
+#define CARD_TOP 98
+#define CARD_STEP 62
+#define FOOTER_TOP 352
+
+typedef struct {
+    char from[48];
+    char subject[96];
+    char time[16];
+    char body[420];
     bool unread;
-} mock_emails[] = {
-    {"Alex Jones", "Project update deadline", "2:30 pm", true},
-    {"Manager", "Important updates needed", "12:15 pm", false},
-    {"Support Team", "Password reset request", "10:45 am", false},
-};
+} email_t;
 
-#define MOCK_EMAIL_COUNT 3
+static email_t emails[MAX_EMAILS];
+static int email_count = 0;
+static int unread_count = 0;
+static bool list_is_sample = false;
 
-lv_obj_t *ui_create_email_list_screen(void) {
-    ESP_LOGI(TAG, "Creating email list screen");
+static email_t detail;
+static bool detail_is_sample = false;
 
-    lv_obj_t *root = lv_scr_act();
-
-    // Main container
-    lv_obj_t *container = lv_obj_create(root);
-    lv_obj_set_size(container, 400, 350);
-    lv_obj_set_pos(container, 33, 50);
-    lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
-
-    // Header: "Email" + count
-    lv_obj_t *header = lv_obj_create(container);
-    lv_obj_set_size(header, 390, 30);
-    lv_obj_set_pos(header, 5, 5);
-    lv_obj_set_style_bg_opa(header, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(header, LV_OPA_0, 0);
-
-    lv_obj_t *header_label = lv_label_create(header);
-    lv_label_set_text(header_label, "✉ 3 new");
-    lv_obj_set_style_text_color(header_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(header_label, &lv_font_montserrat_18, 0);
-    lv_obj_align(header_label, LV_ALIGN_LEFT_MID, 0, 0);
-
-    // Email list (scrollable)
-    lv_obj_t *list = lv_obj_create(container);
-    lv_obj_set_size(list, 390, 280);
-    lv_obj_set_pos(list, 5, 40);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(list, LV_OPA_0, 0);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
-
-    // Email cards
-    for (int i = 0; i < MOCK_EMAIL_COUNT; i++) {
-        // Card container
-        lv_obj_t *card = lv_obj_create(list);
-        lv_obj_set_size(card, 380, 65);
-        lv_obj_set_pos(card, 0, i * 70);
-        lv_obj_set_style_bg_color(card, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_bg_opa(card, i == 0 ? LV_OPA_20 : LV_OPA_10, 0);
-        lv_obj_set_style_border_color(card, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_border_width(card, 1, 0);
-        lv_obj_set_style_border_opa(card, LV_OPA_20, 0);
-        lv_obj_set_style_pad_all(card, 8, 0);
-        lv_obj_set_style_radius(card, 4, 0);
-
-        // Sender name
-        lv_obj_t *sender = lv_label_create(card);
-        lv_label_set_text(sender, mock_emails[i].sender);
-        lv_obj_set_pos(sender, 5, 5);
-        lv_obj_set_style_text_color(sender, COLOR_TEXT_PRIMARY, 0);
-        lv_obj_set_style_text_font(sender, &lv_font_montserrat_14, 0);
-
-        // Unread indicator (if applicable)
-        if (mock_emails[i].unread) {
-            lv_obj_t *unread_dot = lv_label_create(card);
-            lv_label_set_text(unread_dot, "◆");
-            lv_obj_set_pos(unread_dot, 350, 8);
-            lv_obj_set_style_text_color(unread_dot, COLOR_ACCENT_GREEN, 0);
-            lv_obj_set_style_text_font(unread_dot, &lv_font_montserrat_12, 0);
-        }
-
-        // Subject preview
-        lv_obj_t *subject = lv_label_create(card);
-        lv_label_set_text(subject, mock_emails[i].subject);
-        lv_obj_set_width(subject, 340);
-        lv_label_set_long_mode(subject, LV_LABEL_LONG_DOT);
-        lv_obj_set_pos(subject, 5, 22);
-        lv_obj_set_style_text_color(subject, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_font(subject, &lv_font_montserrat_12, 0);
-
-        // Time
-        lv_obj_t *time = lv_label_create(card);
-        lv_label_set_text(time, mock_emails[i].time);
-        lv_obj_set_pos(time, 5, 40);
-        lv_obj_set_style_text_color(time, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_text_font(time, &lv_font_montserrat_10, 0);
-    }
-
-    // Bottom navigation
-    lv_obj_t *nav = lv_obj_create(container);
-    lv_obj_set_size(nav, 390, 40);
-    lv_obj_set_pos(nav, 5, 330);
-    lv_obj_set_style_bg_opa(nav, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(nav, LV_OPA_0, 0);
-
-    lv_obj_t *nav_label = lv_label_create(nav);
-    lv_label_set_text(nav_label, "Swipe: select | Voice: read emails");
-    lv_obj_set_style_text_color(nav_label, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(nav_label, &lv_font_montserrat_10, 0);
-    lv_obj_center(nav_label);
-
-    ESP_LOGI(TAG, "Email list screen created");
-
-    return root;
+static void copy_string(cJSON *object, const char *key, char *out, size_t size) {
+    cJSON *item = cJSON_GetObjectItem(object, key);
+    strlcpy(out, cJSON_IsString(item) && item->valuestring ? item->valuestring : "", size);
 }
 
-lv_obj_t *ui_create_email_detail_screen(const char *from, const char *subject, const char *body) {
-    ESP_LOGI(TAG, "Creating email detail screen");
+static void read_email(cJSON *object, email_t *out) {
+    copy_string(object, "from", out->from, sizeof(out->from));
+    copy_string(object, "subject", out->subject, sizeof(out->subject));
+    copy_string(object, "time", out->time, sizeof(out->time));
+    copy_string(object, "body", out->body, sizeof(out->body));
+    out->unread = cJSON_IsTrue(cJSON_GetObjectItem(object, "unread"));
+}
 
-    lv_obj_t *root = lv_scr_act();
+bool ui_email_set_list(const char *json) {
+    cJSON *root = cJSON_Parse(json);
+    if (!root) {
+        ESP_LOGW(TAG, "Email list JSON could not be read");
+        return false;
+    }
+    cJSON *items = cJSON_GetObjectItem(root, "items");
+    if (!cJSON_IsArray(items)) {
+        cJSON_Delete(root);
+        return false;
+    }
 
-    // Main container
-    lv_obj_t *container = lv_obj_create(root);
-    lv_obj_set_size(container, 400, 380);
-    lv_obj_set_pos(container, 33, 40);
-    lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
+    email_count = 0;
+    cJSON *item;
+    cJSON_ArrayForEach(item, items) {
+        if (email_count >= MAX_EMAILS) break;
+        read_email(item, &emails[email_count++]);
+    }
+    cJSON *unread = cJSON_GetObjectItem(root, "unread");
+    unread_count = cJSON_IsNumber(unread) ? unread->valueint : 0;
+    list_is_sample = cJSON_IsTrue(cJSON_GetObjectItem(root, "sample"));
+    cJSON_Delete(root);
+    return true;
+}
 
-    // Header: From, Subject, Time
-    lv_obj_t *from_label = lv_label_create(container);
-    lv_label_set_text(from_label, from ? from : "Unknown Sender");
-    lv_obj_set_pos(from_label, 5, 5);
-    lv_obj_set_style_text_color(from_label, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(from_label, &lv_font_montserrat_14, 0);
+bool ui_email_set_detail(const char *json) {
+    cJSON *root = cJSON_Parse(json);
+    if (!root) {
+        ESP_LOGW(TAG, "Email JSON could not be read");
+        return false;
+    }
+    read_email(root, &detail);
+    detail_is_sample = cJSON_IsTrue(cJSON_GetObjectItem(root, "sample"));
+    cJSON_Delete(root);
+    return true;
+}
 
-    lv_obj_t *subject_label = lv_label_create(container);
-    lv_label_set_text(subject_label, subject ? subject : "No Subject");
-    lv_obj_set_width(subject_label, 380);
-    lv_label_set_long_mode(subject_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(subject_label, 5, 25);
-    lv_obj_set_style_text_color(subject_label, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(subject_label, &lv_font_montserrat_12, 0);
+bool ui_email_has_list(void) {
+    return email_count > 0;
+}
 
-    lv_obj_t *time_label = lv_label_create(container);
-    lv_label_set_text(time_label, "2:30 pm");
-    lv_obj_set_pos(time_label, 5, 45);
-    lv_obj_set_style_text_color(time_label, COLOR_ACCENT_GRAY, 0);
-    lv_obj_set_style_text_font(time_label, &lv_font_montserrat_10, 0);
+static lv_obj_t *add_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, int width, const char *text) {
+    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_set_width(label, width);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    return label;
+}
 
-    // Divider line
-    lv_obj_t *divider = lv_obj_create(container);
-    lv_obj_set_size(divider, 380, 1);
-    lv_obj_set_pos(divider, 5, 60);
-    lv_obj_set_style_bg_color(divider, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_bg_opa(divider, LV_OPA_20, 0);
-    lv_obj_set_style_border_opa(divider, LV_OPA_0, 0);
+static void card_clicked(lv_event_t *e) {
+    if (!ui_nav_click_allowed()) {
+        return;
+    }
+    int index = (int)(intptr_t)lv_event_get_user_data(e);
+    if (index < 0 || index >= email_count) {
+        return;
+    }
+    detail = emails[index];
+    detail_is_sample = list_is_sample;
+    ui_nav_go(UI_SCREEN_EMAIL_DETAIL, LV_SCR_LOAD_ANIM_MOVE_LEFT);
+}
 
-    // Email body (scrollable)
-    lv_obj_t *body_text = lv_label_create(container);
-    lv_label_set_text(body_text, body ? body : "No content");
-    lv_obj_set_width(body_text, 370);
-    lv_label_set_long_mode(body_text, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(body_text, 10, 75);
-    lv_obj_set_style_text_color(body_text, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(body_text, &lv_font_montserrat_14, 0);
+lv_obj_t *ui_email_list_build(void) {
+    lv_obj_t *screen = lv_obj_create(NULL);
 
-    // Action buttons
-    lv_obj_t *btn_reply = lv_btn_create(container);
-    lv_obj_set_size(btn_reply, 100, 35);
-    lv_obj_set_pos(btn_reply, 20, 330);
-    lv_obj_set_style_bg_color(btn_reply, COLOR_BG_DARK, 0);
-    lv_obj_set_style_bg_opa(btn_reply, LV_OPA_0, 0);
-    lv_obj_set_style_border_color(btn_reply, COLOR_ACCENT_GREEN, 0);
-    lv_obj_set_style_border_width(btn_reply, 1, 0);
+    lv_obj_t *title = lv_label_create(screen);
+    lv_obj_set_style_text_font(title, bug_font_body, 0);
+    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
+    if (unread_count > 0) {
+        lv_label_set_text_fmt(title, "Correo  ·  %d sin leer", unread_count);
+    } else {
+        lv_label_set_text(title, "Correo");
+    }
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 66);
 
-    lv_obj_t *reply_label = lv_label_create(btn_reply);
-    lv_label_set_text(reply_label, "↶ Reply");
-    lv_obj_center(reply_label);
-    lv_obj_set_style_text_color(reply_label, COLOR_ACCENT_GREEN, 0);
+    if (email_count == 0) {
+        lv_obj_t *empty = add_label(screen, bug_font_small, COLOR_TEXT_SECONDARY, 280, "No hay correos");
+        lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(empty, LV_ALIGN_CENTER, 0, 10);
+    }
 
-    lv_obj_t *btn_delete = lv_btn_create(container);
-    lv_obj_set_size(btn_delete, 100, 35);
-    lv_obj_set_pos(btn_delete, 280, 330);
-    lv_obj_set_style_bg_color(btn_delete, COLOR_BG_DARK, 0);
-    lv_obj_set_style_bg_opa(btn_delete, LV_OPA_0, 0);
-    lv_obj_set_style_border_color(btn_delete, COLOR_ACCENT_RED, 0);
-    lv_obj_set_style_border_width(btn_delete, 1, 0);
+    int shown = email_count < VISIBLE_EMAILS ? email_count : VISIBLE_EMAILS;
+    for (int i = 0; i < shown; i++) {
+        lv_obj_t *card = lv_obj_create(screen);
+        lv_obj_remove_style_all(card);
+        lv_obj_set_size(card, CARD_WIDTH, CARD_HEIGHT);
+        lv_obj_set_style_radius(card, 10, 0);
+        lv_obj_set_style_bg_color(card, emails[i].unread ? lv_color_make(38, 38, 38) : lv_color_make(26, 26, 26), 0);
+        lv_obj_set_style_bg_color(card, lv_color_make(60, 60, 60), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+        lv_obj_align(card, LV_ALIGN_TOP_MID, 0, CARD_TOP + i * CARD_STEP);
+        lv_obj_add_event_cb(card, card_clicked, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
 
-    lv_obj_t *delete_label = lv_label_create(btn_delete);
-    lv_label_set_text(delete_label, "Delete");
-    lv_obj_center(delete_label);
-    lv_obj_set_style_text_color(delete_label, COLOR_ACCENT_RED, 0);
+        if (emails[i].unread) {
+            lv_obj_t *dot = lv_obj_create(card);
+            lv_obj_remove_style_all(dot);
+            lv_obj_set_size(dot, 8, 8);
+            lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(dot, COLOR_ACCENT_GREEN, 0);
+            lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+            lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_align(dot, LV_ALIGN_TOP_LEFT, 9, 12);
+        }
 
-    ESP_LOGI(TAG, "Email detail screen created");
+        lv_obj_t *from = add_label(card, bug_font_small, emails[i].unread ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY,
+                                   176, emails[i].from);
+        lv_obj_align(from, LV_ALIGN_TOP_LEFT, 24, 6);
 
-    return root;
+        lv_obj_t *time = add_label(card, bug_font_small, COLOR_TEXT_SECONDARY, 80, emails[i].time);
+        lv_obj_set_style_text_align(time, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_align(time, LV_ALIGN_TOP_RIGHT, -12, 6);
+
+        lv_obj_t *subject = add_label(card, bug_font_small, COLOR_TEXT_SECONDARY, 264, emails[i].subject);
+        lv_obj_align(subject, LV_ALIGN_TOP_LEFT, 24, 30);
+    }
+
+    char footer[64] = "";
+    if (email_count > VISIBLE_EMAILS) {
+        snprintf(footer, sizeof(footer), "+%d más", email_count - VISIBLE_EMAILS);
+    }
+    if (list_is_sample) {
+        strlcat(footer, footer[0] ? "  ·  Datos de ejemplo" : "Datos de ejemplo", sizeof(footer));
+    }
+    if (footer[0]) {
+        lv_obj_t *note = add_label(screen, bug_font_small, lv_color_make(110, 110, 110), 280, footer);
+        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, FOOTER_TOP);
+    }
+    return screen;
+}
+
+lv_obj_t *ui_email_detail_build(void) {
+    lv_obj_t *screen = lv_obj_create(NULL);
+
+    lv_obj_t *from = add_label(screen, bug_font_body, COLOR_TEXT_PRIMARY, 300, detail.from);
+    lv_obj_set_style_text_align(from, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(from, LV_ALIGN_TOP_MID, 0, 68);
+
+    lv_obj_t *time = add_label(screen, bug_font_small, COLOR_TEXT_SECONDARY, 300, detail.time);
+    lv_obj_set_style_text_align(time, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(time, LV_ALIGN_TOP_MID, 0, 100);
+
+    lv_obj_t *subject = add_label(screen, bug_font_small, COLOR_ACCENT_GREEN, 300, detail.subject);
+    lv_label_set_long_mode(subject, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(subject, 42);
+    lv_obj_set_style_text_align(subject, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(subject, LV_ALIGN_TOP_MID, 0, 124);
+
+    lv_obj_t *body = add_label(screen, bug_font_small, COLOR_TEXT_PRIMARY, 300, detail.body);
+    lv_obj_set_height(body, 170);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 174);
+
+    if (detail_is_sample) {
+        lv_obj_t *note = add_label(screen, bug_font_small, lv_color_make(110, 110, 110), 280, "Datos de ejemplo");
+        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, FOOTER_TOP);
+    }
+    return screen;
 }

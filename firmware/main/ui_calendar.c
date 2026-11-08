@@ -1,111 +1,127 @@
 #include "ui_calendar.h"
+#include "bug_fonts.h"
 #include "ui_config.h"
-#include "lvgl.h"
+#include "cJSON.h"
 #include "esp_log.h"
+#include <string.h>
 
 static const char *TAG = "UI_CALENDAR";
 
-lv_obj_t *ui_create_calendar_screen(void) {
-    ESP_LOGI(TAG, "Creating calendar screen");
+#define MAX_DAYS 2
+#define MAX_EVENTS 4
+#define LIST_TOP 76
+#define LIST_BOTTOM 346     // the round screen narrows below this
+#define HEADER_HEIGHT 28
+#define EVENT_HEIGHT 48
+#define FOOTER_TOP 352
 
-    lv_obj_t *root = lv_scr_act();
+typedef struct {
+    char time[16];
+    char title[64];
+    char place[40];
+} event_t;
 
-    // Main container
-    lv_obj_t *container = lv_obj_create(root);
-    lv_obj_set_size(container, 400, 350);
-    lv_obj_set_pos(container, 33, 50);
-    lv_obj_set_style_bg_opa(container, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(container, LV_OPA_0, 0);
+typedef struct {
+    char label[64];
+    event_t events[MAX_EVENTS];
+    int count;
+} day_t;
 
-    // Header: "📅 Today"
-    lv_obj_t *header = lv_label_create(container);
-    lv_label_set_text(header, "📅 Today");
-    lv_obj_set_pos(header, 5, 5);
-    lv_obj_set_style_text_color(header, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(header, &lv_font_montserrat_18, 0);
+static day_t days[MAX_DAYS];
+static int day_count = 0;
+static bool is_sample = false;
 
-    // Events list
-    lv_obj_t *list = lv_obj_create(container);
-    lv_obj_set_size(list, 390, 310);
-    lv_obj_set_pos(list, 5, 35);
-    lv_obj_set_style_bg_opa(list, LV_OPA_0, 0);
-    lv_obj_set_style_border_opa(list, LV_OPA_0, 0);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
+static void copy_string(cJSON *object, const char *key, char *out, size_t size) {
+    cJSON *item = cJSON_GetObjectItem(object, key);
+    strlcpy(out, cJSON_IsString(item) && item->valuestring ? item->valuestring : "", size);
+}
 
-    // Today's events
-    const char *events_today[] = {
-        "4:00 PM Team Standup",
-        "6:30 PM Dentist appt"
-    };
-    const char *event_details[] = {
-        "(Join now?)",
-        "(Downtown)"
-    };
-
-    int y_pos = 0;
-    for (int i = 0; i < 2; i++) {
-        // Event card
-        lv_obj_t *card = lv_obj_create(list);
-        lv_obj_set_size(card, 380, 50);
-        lv_obj_set_pos(card, 0, y_pos);
-        lv_obj_set_style_bg_color(card, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0);
-        lv_obj_set_style_border_opa(card, LV_OPA_0, 0);
-        lv_obj_set_style_pad_all(card, 8, 0);
-
-        // Event time + title
-        lv_obj_t *event_label = lv_label_create(card);
-        lv_label_set_text(event_label, events_today[i]);
-        lv_obj_set_pos(event_label, 5, 5);
-        lv_obj_set_style_text_color(event_label, COLOR_TEXT_PRIMARY, 0);
-        lv_obj_set_style_text_font(event_label, &lv_font_montserrat_14, 0);
-
-        // Event details
-        lv_obj_t *detail_label = lv_label_create(card);
-        lv_label_set_text(detail_label, event_details[i]);
-        lv_obj_set_pos(detail_label, 5, 25);
-        lv_obj_set_style_text_color(detail_label, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_font(detail_label, &lv_font_montserrat_12, 0);
-
-        y_pos += 60;
+bool ui_calendar_set_data(const char *json) {
+    cJSON *root = cJSON_Parse(json);
+    if (!root) {
+        ESP_LOGW(TAG, "Calendar JSON could not be read");
+        return false;
+    }
+    cJSON *list = cJSON_GetObjectItem(root, "days");
+    if (!cJSON_IsArray(list)) {
+        cJSON_Delete(root);
+        return false;
     }
 
-    // Tomorrow section
-    y_pos += 20;
+    day_count = 0;
+    cJSON *day;
+    cJSON_ArrayForEach(day, list) {
+        if (day_count >= MAX_DAYS) break;
+        day_t *out = &days[day_count++];
+        copy_string(day, "label", out->label, sizeof(out->label));
+        out->count = 0;
+        cJSON *events = cJSON_GetObjectItem(day, "events");
+        cJSON *event;
+        cJSON_ArrayForEach(event, events) {
+            if (out->count >= MAX_EVENTS) break;
+            event_t *e = &out->events[out->count++];
+            copy_string(event, "time", e->time, sizeof(e->time));
+            copy_string(event, "title", e->title, sizeof(e->title));
+            copy_string(event, "place", e->place, sizeof(e->place));
+        }
+    }
+    is_sample = cJSON_IsTrue(cJSON_GetObjectItem(root, "sample"));
+    cJSON_Delete(root);
+    return true;
+}
 
-    lv_obj_t *tomorrow_label = lv_label_create(list);
-    lv_label_set_text(tomorrow_label, "Tomorrow:");
-    lv_obj_set_pos(tomorrow_label, 0, y_pos);
-    lv_obj_set_style_text_color(tomorrow_label, COLOR_ACCENT_GRAY, 0);
-    lv_obj_set_style_text_font(tomorrow_label, &lv_font_montserrat_12, 0);
+static lv_obj_t *add_label(lv_obj_t *parent, lv_color_t color, int width, int x, int y, const char *text) {
+    lv_obj_t *label = lv_label_create(parent);
+    lv_obj_set_width(label, width);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_font(label, bug_font_small, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_pos(label, x, y);
+    return label;
+}
 
-    y_pos += 25;
+lv_obj_t *ui_calendar_build(void) {
+    lv_obj_t *screen = lv_obj_create(NULL);
 
-    // Tomorrow's events
-    const char *events_tomorrow[] = {
-        "9:00 AM All-hands",
-        "2:00 PM 1:1 Manager"
-    };
+    lv_obj_t *list = lv_obj_create(screen);
+    lv_obj_remove_style_all(list);
+    lv_obj_set_size(list, 300, LIST_BOTTOM - LIST_TOP);
+    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, LIST_TOP);
+    lv_obj_clear_flag(list, LV_OBJ_FLAG_CLICKABLE);
 
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *card = lv_obj_create(list);
-        lv_obj_set_size(card, 380, 45);
-        lv_obj_set_pos(card, 0, y_pos);
-        lv_obj_set_style_bg_color(card, COLOR_ACCENT_GRAY, 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0);  // More transparent for future events
-        lv_obj_set_style_border_opa(card, LV_OPA_0, 0);
-        lv_obj_set_style_pad_all(card, 8, 0);
+    int y = 0;
+    int limit = LIST_BOTTOM - LIST_TOP;
+    for (int d = 0; d < day_count; d++) {
+        if (y + HEADER_HEIGHT > limit) break;
+        add_label(list, COLOR_ACCENT_GREEN, 300, 0, y, days[d].label);
+        y += HEADER_HEIGHT;
 
-        lv_obj_t *event = lv_label_create(card);
-        lv_label_set_text(event, events_tomorrow[i]);
-        lv_obj_set_pos(event, 5, 10);
-        lv_obj_set_style_text_color(event, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_font(event, &lv_font_montserrat_14, 0);
-
-        y_pos += 50;
+        if (days[d].count == 0) {
+            add_label(list, COLOR_TEXT_SECONDARY, 300, 0, y, "Sin eventos");
+            y += 30;
+        }
+        for (int i = 0; i < days[d].count; i++) {
+            if (y + EVENT_HEIGHT > limit) break;
+            const event_t *e = &days[d].events[i];
+            add_label(list, COLOR_TEXT_SECONDARY, 84, 0, y, e->time);
+            add_label(list, COLOR_TEXT_PRIMARY, 212, 88, y, e->title);
+            add_label(list, COLOR_TEXT_SECONDARY, 212, 88, y + 21, e->place);
+            y += EVENT_HEIGHT;
+        }
+        y += 6;
     }
 
-    ESP_LOGI(TAG, "Calendar screen created");
+    if (day_count == 0) {
+        lv_obj_t *empty = add_label(screen, COLOR_TEXT_SECONDARY, 280, 0, 0, "No hay eventos");
+        lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(empty, LV_ALIGN_CENTER, 0, 10);
+    }
 
-    return root;
+    if (is_sample) {
+        lv_obj_t *note = add_label(screen, lv_color_make(110, 110, 110), 280, 0, 0, "Datos de ejemplo");
+        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, FOOTER_TOP);
+    }
+    return screen;
 }

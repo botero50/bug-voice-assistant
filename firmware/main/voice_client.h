@@ -17,6 +17,7 @@ typedef struct {
     voice_action_t action;
     char heard[128];      // What the server understood (UTF-8). Empty when ignored.
     char reply[256];      // The answer as text (UTF-8)
+    char screen[160];     // Screen or action with the answer, e.g. "email", "email_detail?i=0" or "timer?id=3&at=...".
     int16_t *audio;       // 16 kHz mono PCM, in PSRAM. Release with voice_result_free().
     size_t audio_bytes;
 } voice_result_t;
@@ -25,5 +26,11 @@ typedef struct {
 // command_mode=false waits for "Hola Bug"/"Hey Bug"; true treats the sentence as the command.
 esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_bytes, voice_result_t *result);
 void voice_result_free(voice_result_t *result);
+
+// Turns "Llamar%20a%20Ana" back into text. Used for header values and for values inside them.
+void voice_client_percent_decode(char *dst, size_t cap, const char *src);
+
+// Downloads the data a skill screen draws, as JSON text. Release with heap_caps_free().
+esp_err_t voice_client_fetch_screen(const char *path, char **json);
 
 #endif

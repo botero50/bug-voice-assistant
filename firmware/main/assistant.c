@@ -1,6 +1,8 @@
 #include "assistant.h"
+#include "alarms.h"
 #include "audio_driver.h"
 #include "clock.h"
+#include "music_player.h"
 #include "network_manager.h"
 #include "settings_store.h"
 #include "voice_client.h"
@@ -9,6 +11,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "ASSISTANT";
@@ -70,12 +74,38 @@ void assistant_get_texts(char *heard, size_t heard_size, char *reply, size_t rep
     strlcpy(reply, reply_text, reply_size);
 }
 
+static char screen_path[48];
+static char *screen_json = NULL;
+static volatile bool screen_ready = false;
+
+bool assistant_screen_pending(void) {
+    return screen_ready;
+}
+
+bool assistant_take_screen(char *path, size_t path_size, char **json) {
+    if (!screen_ready) {
+        return false;
+    }
+    strlcpy(path, screen_path, path_size);
+    *json = screen_json;
+    screen_json = NULL;
+    screen_ready = false;
+    return true;
+}
+
+static void publish_screen(const char *path, char *json) {
+    heap_caps_free(screen_json);  // an older screen nobody picked up
+    strlcpy(screen_path, path, sizeof(screen_path));
+    screen_json = json;
+    screen_ready = true;
+}
+
 void assistant_wifi_changed(void) {
     wifi_dirty = true;
 }
 
 void assistant_listen_now(void) {
-    if (current_state == ASSISTANT_STATE_STANDBY) {
+    if (current_state == ASSISTANT_STATE_STANDBY || current_state == ASSISTANT_STATE_MUSIC) {
         listen_now_request = true;
     }
 }
@@ -147,6 +177,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
     uint32_t log_ms = 0;
     float threshold = 0;
     bool muted_at_start = muted;
+    bool music_at_start = music_is_playing();
 
     audio_level = 0;
     for (;;) {
@@ -156,7 +187,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
         float rms = frame_rms(frame);
         threshold = fmaxf(noise_floor * NOISE_MULTIPLIER, MIN_THRESHOLD);
 
-        if (interruptible && (listen_now_request || muted != muted_at_start)) {
+        if (interruptible && (listen_now_request || muted != muted_at_start || music_is_playing() != music_at_start)) {
             return 0;
         }
 
@@ -164,7 +195,8 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
         head = (head + 1) % PREROLL_FRAMES;
         if (filled < PREROLL_FRAMES) filled++;
 
-        if (rms > threshold && !muted) {
+        // While music plays the mic would hear the music itself, so only a tap on the ring starts a command
+        if (rms > threshold && !muted && !music_is_playing() && !alarm_ringing()) {
             ESP_LOGI(TAG, "Speech started: level %.0f, trigger %.0f, room noise %.0f", rms, threshold, noise_floor);
             publish_level(rms);
             set_state(speech_state);
@@ -236,8 +268,91 @@ static void chime(void) {
     audio_flush_input(400);
 }
 
+// Reads one value out of "timer?id=3&at=173000&l=Llamar%20a%20Ana", decoding the percent signs.
+static bool param(const char *path, const char *key, char *out, size_t size) {
+    const char *query = strchr(path, '?');
+    if (!query) {
+        return false;
+    }
+    size_t key_length = strlen(key);
+    for (const char *p = query + 1; *p;) {
+        if (strncmp(p, key, key_length) == 0 && p[key_length] == '=') {
+            const char *value = p + key_length + 1;
+            const char *end = strchr(value, '&');
+            size_t length = end ? (size_t)(end - value) : strlen(value);
+            char raw[160];
+            if (length >= sizeof(raw)) length = sizeof(raw) - 1;
+            memcpy(raw, value, length);
+            raw[length] = '\0';
+            voice_client_percent_decode(out, size, raw);
+            return true;
+        }
+        const char *next = strchr(p, '&');
+        if (!next) break;
+        p = next + 1;
+    }
+    return false;
+}
+
+static void change_volume(int delta);
+
+static void set_volume_to(int percent) {
+    bug_settings_t settings;
+    settings_copy(&settings);
+    change_volume(percent - (int)settings.volume);
+}
+
+static void change_volume(int delta) {
+    bug_settings_t settings;
+    settings_copy(&settings);
+    int volume = settings.volume + delta;
+    volume = volume < 5 ? 5 : (volume > 100 ? 100 : volume);
+    settings_set_volume(volume);
+    audio_set_volume(volume);
+    ESP_LOGI(TAG, "Volume %d%%", volume);
+}
+
 static void speak(const voice_result_t *result) {
     set_texts(result->heard, result->reply);
+
+    // Some answers carry an action instead of, or as well as, a screen
+    int volume_delta = 0;
+    int volume_set = -1;
+    bool start_music = false;
+    char music_path[160] = "";
+    if (result->screen[0]) {
+        char *json = NULL;
+        if (strncmp(result->screen, "volume?d=", 9) == 0) {
+            volume_delta = atoi(result->screen + 9);
+        } else if (strncmp(result->screen, "volume?v=", 9) == 0) {
+            volume_set = atoi(result->screen + 9);
+        } else if (strncmp(result->screen, "timer?", 6) == 0) {
+            // Saved on the board first, so it rings even if the PC is off later
+            char id[16] = "", at[24] = "", name[64] = "";
+            if (param(result->screen, "id", id, sizeof(id)) && param(result->screen, "at", at, sizeof(at))) {
+                param(result->screen, "l", name, sizeof(name));
+                alarms_add((uint32_t)strtoul(id, NULL, 10), (time_t)atoll(at), name[0] ? name : "Temporizador");
+            }
+        } else if (strncmp(result->screen, "timer_cancel?", 13) == 0) {
+            char ids[96] = "";
+            if (param(result->screen, "ids", ids, sizeof(ids))) {
+                alarms_cancel_ids(ids);
+            }
+        } else if (strcmp(result->screen, "music_stop") == 0) {
+            music_stop();
+            publish_screen("home", NULL);
+        } else if (strcmp(result->screen, "home") == 0) {
+            publish_screen("home", NULL);
+        } else if (voice_client_fetch_screen(result->screen, &json) == ESP_OK) {
+            // The screen goes first so it is already coming up when the voice starts.
+            publish_screen(result->screen, json);
+            if (strncmp(result->screen, "music?", 6) == 0) {
+                snprintf(music_path, sizeof(music_path), "music/stream?%s", result->screen + 6);
+                start_music = true;
+            }
+        }
+    }
+
     set_state(ASSISTANT_STATE_SPEAKING);
     audio_set_speaker(true);
     vTaskDelay(pdMS_TO_TICKS(30));
@@ -245,6 +360,16 @@ static void speak(const voice_result_t *result) {
     vTaskDelay(pdMS_TO_TICKS(150));
     audio_set_speaker(false);
     audio_flush_input(500);  // don't hear our own voice
+
+    if (volume_set >= 0) {
+        set_volume_to(volume_set);
+    }
+    if (volume_delta) {
+        change_volume(volume_delta);
+    }
+    if (start_music) {
+        music_start(music_path);  // after the announcement, so the two never overlap
+    }
 }
 
 static void calibrate_noise(void) {
@@ -294,7 +419,16 @@ static void wait_for_wifi(void) {
 }
 
 // The wake word was heard (or the ring was tapped): listen for the command and answer it.
+static void handle_command_with_voice(int16_t *utterance);
+
 static void handle_command(int16_t *utterance) {
+    // Music and Bug's voice share the speaker, so the music waits and then carries on
+    music_pause_for_voice();
+    handle_command_with_voice(utterance);
+    music_resume_after_voice();
+}
+
+static void handle_command_with_voice(int16_t *utterance) {
     chime();
     set_state(ASSISTANT_STATE_LISTENING);
     size_t samples = capture_utterance(utterance, COMMAND_WAIT_MS, ASSISTANT_STATE_LISTENING, false);
@@ -338,7 +472,7 @@ static void assistant_task(void *arg) {
     calibrate_noise();
 
     for (;;) {
-        set_state(muted ? ASSISTANT_STATE_MUTED : ASSISTANT_STATE_STANDBY);
+        set_state(muted ? ASSISTANT_STATE_MUTED : (music_is_playing() ? ASSISTANT_STATE_MUSIC : ASSISTANT_STATE_STANDBY));
         size_t samples = capture_utterance(utterance, 0, ASSISTANT_STATE_HEARING, true);
 
         if (listen_now_request) {

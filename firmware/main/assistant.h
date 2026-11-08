@@ -10,6 +10,7 @@ typedef enum {
     ASSISTANT_STATE_WIFI_ERROR,  // Saved Wi-Fi didn't work (wrong password or out of range)
     ASSISTANT_STATE_STANDBY,     // Waiting for "Hola Bug" / "Hey Bug"
     ASSISTANT_STATE_MUTED,       // Microphone switched off
+    ASSISTANT_STATE_MUSIC,       // Radio playing; the mic ignores speech until the ring is tapped
     ASSISTANT_STATE_HEARING,     // Someone started talking; recording it
     ASSISTANT_STATE_LISTENING,   // Heard the wake word, waiting for the command
     ASSISTANT_STATE_THINKING,    // Sent to the PC, waiting for the answer
@@ -31,6 +32,13 @@ float assistant_audio_level(void);
 
 // What the server last understood and answered (UTF-8). Valid when a state change is reported.
 void assistant_get_texts(char *heard, size_t heard_size, char *reply, size_t reply_size);
+
+// True when the last answer comes with a screen to open (see assistant_take_screen).
+bool assistant_screen_pending(void);
+
+// Takes the screen the last answer asked for: its path ("email", "calendar", "home"...) and its
+// JSON data (NULL for "home"). The caller frees the JSON with heap_caps_free().
+bool assistant_take_screen(char *path, size_t path_size, char **json);
 
 // Call after the Wi-Fi settings changed so a waiting assistant tries again.
 void assistant_wifi_changed(void);

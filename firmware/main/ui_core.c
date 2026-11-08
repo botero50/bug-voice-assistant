@@ -16,6 +16,7 @@ const lv_font_t *font_small = NULL;
 static lv_obj_t *time_label = NULL;
 static lv_obj_t *wifi_label = NULL;
 static lv_obj_t *battery_label = NULL;
+static lv_obj_t *banner_label = NULL;
 
 #define COLOR_BATTERY_YELLOW lv_color_make(255, 193, 7)
 
@@ -47,6 +48,12 @@ static void ui_create_status_bar(void) {
     lv_obj_set_style_text_color(wifi_label, COLOR_ACCENT_GRAY, 0);
     lv_label_set_text(wifi_label, LV_SYMBOL_WIFI);
     lv_obj_align(wifi_label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // Shown instead of the clock while the user talks to Bug, on any screen
+    banner_label = lv_label_create(ui_ctx.status_bar);
+    lv_obj_set_style_text_font(banner_label, font_body, 0);
+    lv_label_set_text(banner_label, "");
+    lv_obj_add_flag(banner_label, LV_OBJ_FLAG_HIDDEN);
 
     ui_ctx.bottom_nav = transparent_box(layer, 160, 28);
     lv_obj_align(ui_ctx.bottom_nav, LV_ALIGN_BOTTOM_MID, 0, -26);
@@ -163,6 +170,22 @@ void ui_update_wifi_status(bool connected) {
     }
     ui_ctx.wifi_connected = connected;
     lv_obj_set_style_text_color(wifi_label, connected ? COLOR_ACCENT_GREEN : COLOR_ACCENT_GRAY, 0);
+}
+
+void ui_voice_banner(const char *text, lv_color_t color) {
+    if (!banner_label || !time_label) {
+        return;
+    }
+    if (text && text[0]) {
+        lv_label_set_text(banner_label, text);
+        lv_obj_set_style_text_color(banner_label, color, 0);
+        lv_obj_center(banner_label);
+        lv_obj_clear_flag(banner_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(time_label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(banner_label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(time_label, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void ui_mute_mic(bool muted) {

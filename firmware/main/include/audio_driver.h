@@ -25,7 +25,7 @@ esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size);
 void audio_set_speaker(bool enabled);
 
 // Plays a short sine tone. The speaker amplifier must already be on.
-void audio_beep(float frequency_hz, int milliseconds);
+esp_err_t audio_beep(float frequency_hz, int milliseconds);
 
 // Throws away microphone audio for a while, e.g. right after the speaker played.
 void audio_flush_input(int milliseconds);

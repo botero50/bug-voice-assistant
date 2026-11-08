@@ -250,11 +250,12 @@ void audio_set_speaker(bool enabled) {
     gpio_set_level(PIN_SPEAKER_AMP, enabled ? 1 : 0);
 }
 
-void audio_beep(float frequency_hz, int milliseconds) {
+esp_err_t audio_beep(float frequency_hz, int milliseconds) {
     const int total = SAMPLE_RATE * milliseconds / 1000;
     const int fade = 80;  // samples, avoids clicks
     int16_t chunk[CHUNK_FRAMES];
     int done = 0;
+    esp_err_t result = ESP_OK;
 
     while (done < total) {
         int count = total - done;
@@ -266,9 +267,13 @@ void audio_beep(float frequency_hz, int milliseconds) {
             if (total - index < fade) level *= (float)(total - index) / fade;
             chunk[i] = (int16_t)(level * sinf(2.0f * (float)M_PI * frequency_hz * index / SAMPLE_RATE));
         }
-        audio_write_samples(chunk, count * sizeof(int16_t));
+        esp_err_t written = audio_write_samples(chunk, count * sizeof(int16_t));
+        if (written != ESP_OK && result == ESP_OK) {
+            result = written;
+        }
         done += count;
     }
+    return result;
 }
 
 void audio_flush_input(int milliseconds) {

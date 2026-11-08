@@ -11,7 +11,10 @@
 #include "microsd_manager.h"
 #include "power_manager.h"
 #include "audio_driver.h"
+#include "alarms.h"
 #include "assistant.h"
+#include "music_player.h"
+#include "esp_heap_caps.h"
 #include "settings_store.h"
 #include "ui_nav.h"
 #include "battery.h"
@@ -59,8 +62,31 @@ static void show_assistant_state(assistant_state_t state) {
     assistant_get_texts(heard, sizeof(heard), reply, sizeof(reply));
     answer_expires_ms = 0;
 
+    // While the user talks to Bug, a banner replaces the clock on any screen, so a skill
+    // screen stays visible instead of being replaced by the listening ring.
+    switch (state) {
+    case ASSISTANT_STATE_HEARING:
+        ui_voice_banner("Escuchando", COLOR_ACCENT_GREEN);
+        break;
+    case ASSISTANT_STATE_LISTENING:
+        ui_voice_banner("Te escucho", COLOR_ACCENT_GREEN);
+        break;
+    case ASSISTANT_STATE_THINKING:
+        ui_voice_banner("Pensando", COLOR_ACCENT_BLUE);
+        break;
+    case ASSISTANT_STATE_SPEAKING:
+        ui_voice_banner("Hablando", COLOR_ACCENT_WHITE);
+        break;
+    default:
+        ui_voice_banner(NULL, COLOR_ACCENT_WHITE);
+        break;
+    }
     if (state == ASSISTANT_STATE_HEARING || state == ASSISTANT_STATE_LISTENING || state == ASSISTANT_STATE_THINKING ||
         state == ASSISTANT_STATE_SPEAKING) {
+        ui_nav_keep_alive();
+    }
+    // An answer with no screen of its own is shown on Home
+    if (state == ASSISTANT_STATE_SPEAKING && !assistant_screen_pending()) {
         ui_nav_show_home_for_voice();
     }
 
@@ -83,6 +109,13 @@ static void show_assistant_state(assistant_state_t state) {
         ui_home_set_mode(UI_HOME_MUTED);
         show_texts("", "Micrófono apagado");
         break;
+    case ASSISTANT_STATE_MUSIC: {
+        ui_home_set_mode(UI_HOME_MUSIC);
+        char playing[120];
+        snprintf(playing, sizeof(playing), "%s", music_label());
+        ui_home_set_texts("Reproduciendo · toca el círculo para hablar", playing);  // no quotes: it isn't speech
+        break;
+    }
     case ASSISTANT_STATE_CONNECTING:
         ui_home_set_mode(UI_HOME_STANDBY);
         show_texts("", "Conectando al WiFi...");
@@ -136,6 +169,8 @@ void app_main(void) {
     ESP_ERROR_CHECK(ret);
     ESP_LOGI(TAG, "✓ NVS initialized");
     settings_load();
+    alarms_init();
+    alarms_start_ringer();
     bug_settings_t settings;
     settings_copy(&settings);
 
@@ -266,13 +301,37 @@ void app_main(void) {
     uint32_t last_battery_ms = 0;
     int last_battery_percent = -2;
 
+    uint32_t last_alarm_ms = 0;
+
     while (1) {
         uint32_t now = now_ms();
+
+        // Timers and alarms ring even without a screen, and even if the PC is off
+        if (now - last_alarm_ms >= 1000) {
+            last_alarm_ms = now;
+            alarm_entry_t due;
+            if (alarms_pop_due(&due)) {
+                ESP_LOGI(TAG, "Ringing: %s", due.label);
+                alarm_ring_start(due.label);
+                if (display_ready) {
+                    ui_nav_open_alarm(due.label);
+                }
+            }
+        }
 
         if (display_ready) {
             assistant_state_t state;
             if (assistant_take_state(&state)) {
                 show_assistant_state(state);
+            }
+
+            // A voice command can open a screen: "muéstrame los correos" opens the email screen
+            char screen_path[48];
+            char *screen_json = NULL;
+            if (assistant_take_screen(screen_path, sizeof(screen_path), &screen_json)) {
+                ESP_LOGI(TAG, "Opening screen %s", screen_path);
+                ui_nav_open_screen(screen_path, screen_json);
+                heap_caps_free(screen_json);
             }
 
             if (now - last_level_ms >= 50) {
@@ -289,6 +348,7 @@ void app_main(void) {
                     ui_update_time(99, 0);
                 }
                 ui_update_wifi_status(network_manager_is_connected() == ESP_OK);
+                ui_nav_tick();
 
                 if (answer_expires_ms && now > answer_expires_ms) {
                     answer_expires_ms = 0;

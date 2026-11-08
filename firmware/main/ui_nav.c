@@ -1,56 +1,35 @@
 #include "ui_nav.h"
 #include "assistant.h"
 #include "bug_fonts.h"
+#include "ui_calendar.h"
 #include "ui_config.h"
+#include "ui_email.h"
+#include "alarms.h"
+#include "ui_alarm.h"
+#include "ui_article.h"
+#include "ui_headlines.h"
 #include "ui_home.h"
+#include "ui_music.h"
+#include "ui_rows.h"
 #include "ui_settings.h"
 #include "ui_text_entry.h"
+#include "ui_weather.h"
 #include "ui_wifi.h"
 #include "esp_log.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "UI_NAV";
 
 #define TRANSITION_MS 250
 #define CLICK_BLOCK_MS 500
-
-static const ui_screen_id_t cycle[] = {UI_SCREEN_HOME, UI_SCREEN_EMAIL, UI_SCREEN_CALENDAR, UI_SCREEN_SKILLS};
-#define CYCLE_COUNT ((int)(sizeof(cycle) / sizeof(cycle[0])))
+#define IDLE_RETURN_MS 60000  // a screen left alone this long goes back Home
 
 static ui_screen_id_t current = UI_SCREEN_HOME;
 static uint32_t last_gesture_ms = 0;
 static uint32_t transition_end_ms = 0;
+static uint32_t opened_ms = 0;
 static bool started = false;
-
-static int cycle_position(ui_screen_id_t id) {
-    for (int i = 0; i < CYCLE_COUNT; i++) {
-        if (cycle[i] == id) return i;
-    }
-    return -1;
-}
-
-static lv_obj_t *build_placeholder(const char *symbol, const char *title) {
-    lv_obj_t *screen = lv_obj_create(NULL);
-
-    lv_obj_t *icon = lv_label_create(screen);
-    lv_label_set_text(icon, symbol);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(icon, COLOR_ACCENT_GREEN, 0);
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -50);
-
-    lv_obj_t *name = lv_label_create(screen);
-    lv_label_set_text(name, title);
-    lv_obj_set_style_text_font(name, bug_font_body, 0);
-    lv_obj_set_style_text_color(name, COLOR_TEXT_PRIMARY, 0);
-    lv_obj_align(name, LV_ALIGN_CENTER, 0, -5);
-
-    lv_obj_t *hint = lv_label_create(screen);
-    lv_label_set_text(hint, "Próximamente");
-    lv_obj_set_style_text_font(hint, bug_font_small, 0);
-    lv_obj_set_style_text_color(hint, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_align(hint, LV_ALIGN_CENTER, 0, 28);
-    return screen;
-}
 
 static lv_obj_t *build_history(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
@@ -101,11 +80,23 @@ static lv_obj_t *build(ui_screen_id_t id) {
     case UI_SCREEN_HOME:
         return ui_home_build();
     case UI_SCREEN_EMAIL:
-        return build_placeholder(LV_SYMBOL_ENVELOPE, "Correo");
+        return ui_email_list_build();
+    case UI_SCREEN_EMAIL_DETAIL:
+        return ui_email_detail_build();
     case UI_SCREEN_CALENDAR:
-        return build_placeholder(LV_SYMBOL_LIST, "Calendario");
-    case UI_SCREEN_SKILLS:
-        return build_placeholder(LV_SYMBOL_PLAY, "Habilidades");
+        return ui_calendar_build();
+    case UI_SCREEN_WEATHER:
+        return ui_weather_build();
+    case UI_SCREEN_MUSIC:
+        return ui_music_build();
+    case UI_SCREEN_ROWS:
+        return ui_rows_build();
+    case UI_SCREEN_HEADLINES:
+        return ui_headlines_build();
+    case UI_SCREEN_ARTICLE:
+        return ui_article_build();
+    case UI_SCREEN_ALARM:
+        return ui_alarm_build();
     case UI_SCREEN_SETTINGS:
         return ui_settings_build();
     case UI_SCREEN_HISTORY:
@@ -117,22 +108,6 @@ static lv_obj_t *build(ui_screen_id_t id) {
     }
 }
 
-// Small dots under the content show which of the swipeable screens is open.
-static void add_page_dots(lv_obj_t *screen, int position) {
-    const int size = 7, gap = 9;
-    int total = CYCLE_COUNT * size + (CYCLE_COUNT - 1) * gap;
-    for (int i = 0; i < CYCLE_COUNT; i++) {
-        lv_obj_t *dot = lv_obj_create(screen);
-        lv_obj_remove_style_all(dot);
-        lv_obj_set_size(dot, size, size);
-        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(dot, i == position ? COLOR_ACCENT_GREEN : COLOR_ACCENT_GRAY, 0);
-        lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(dot, LV_ALIGN_TOP_MID, -total / 2 + size / 2 + i * (size + gap), 384);
-    }
-}
-
 static void swipe_cb(lv_event_t *e);
 
 void ui_nav_load_screen(lv_obj_t *screen, ui_screen_id_t id, lv_scr_load_anim_t anim) {
@@ -141,19 +116,15 @@ void ui_nav_load_screen(lv_obj_t *screen, ui_screen_id_t id, lv_scr_load_anim_t 
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(screen, swipe_cb, LV_EVENT_GESTURE, NULL);
 
-    int position = cycle_position(id);
-    if (position >= 0) {
-        add_page_dots(screen, position);
-    }
-
     uint32_t duration = anim == LV_SCR_LOAD_ANIM_NONE ? 0 : TRANSITION_MS;
     transition_end_ms = lv_tick_get() + duration;
+    opened_ms = lv_tick_get();
     current = id;
     lv_scr_load_anim(screen, anim, duration, 0, true);
 }
 
-void ui_nav_go(ui_screen_id_t id, lv_scr_load_anim_t anim) {
-    if (started && id == current) {
+static void go(ui_screen_id_t id, lv_scr_load_anim_t anim, bool reload) {
+    if (started && id == current && !reload) {
         return;
     }
     lv_obj_t *screen = build(id);
@@ -165,18 +136,73 @@ void ui_nav_go(ui_screen_id_t id, lv_scr_load_anim_t anim) {
     ui_nav_load_screen(screen, id, anim);
 }
 
+void ui_nav_go(ui_screen_id_t id, lv_scr_load_anim_t anim) {
+    go(id, anim, false);
+}
+
 void ui_nav_start(void) {
     started = false;
-    ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_NONE);
+    go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_NONE, false);
 }
 
 ui_screen_id_t ui_nav_current(void) {
     return current;
 }
 
+void ui_nav_open_screen(const char *path, const char *json) {
+    if (strcmp(path, "home") == 0) {
+        go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_FADE_IN, false);
+        return;
+    }
+    if (!json) {
+        return;
+    }
+    // Opening a screen replaces whatever is showing, even a screen of the same kind
+    // (asking for the emails again refreshes them).
+    if (strncmp(path, "email_detail", 12) == 0) {
+        if (ui_email_set_detail(json)) go(UI_SCREEN_EMAIL_DETAIL, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "email", 5) == 0) {
+        if (ui_email_set_list(json)) go(UI_SCREEN_EMAIL, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "calendar", 8) == 0) {
+        if (ui_calendar_set_data(json)) go(UI_SCREEN_CALENDAR, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "weather", 7) == 0) {
+        if (ui_weather_set_data(json)) go(UI_SCREEN_WEATHER, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "music", 5) == 0) {
+        if (ui_music_set_data(json)) go(UI_SCREEN_MUSIC, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "rows", 4) == 0) {
+        if (ui_rows_set_data(json)) go(UI_SCREEN_ROWS, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "headlines", 9) == 0) {
+        if (ui_headlines_set_data(json)) go(UI_SCREEN_HEADLINES, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else if (strncmp(path, "article", 7) == 0) {
+        if (ui_article_set_data(json)) go(UI_SCREEN_ARTICLE, LV_SCR_LOAD_ANIM_FADE_IN, true);
+    } else {
+        ESP_LOGW(TAG, "Unknown screen %s", path);
+    }
+}
+
+void ui_nav_open_alarm(const char *label) {
+    ui_alarm_set_label(label);
+    go(UI_SCREEN_ALARM, LV_SCR_LOAD_ANIM_FADE_IN, true);
+}
+
 void ui_nav_show_home_for_voice(void) {
     if (current != UI_SCREEN_HOME && current != UI_SCREEN_TEXT_ENTRY && current != UI_SCREEN_WIFI) {
-        ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_NONE);
+        go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_NONE, false);
+    }
+}
+
+void ui_nav_keep_alive(void) {
+    opened_ms = lv_tick_get();
+}
+
+void ui_nav_tick(void) {
+    bool leaves_alone = current == UI_SCREEN_EMAIL || current == UI_SCREEN_EMAIL_DETAIL ||
+                        current == UI_SCREEN_CALENDAR || current == UI_SCREEN_WEATHER ||
+                        current == UI_SCREEN_ROWS || current == UI_SCREEN_HEADLINES ||
+                        current == UI_SCREEN_ARTICLE || current == UI_SCREEN_SETTINGS ||
+                        current == UI_SCREEN_HISTORY;
+    if (leaves_alone && lv_tick_elaps(opened_ms) > IDLE_RETURN_MS && lv_disp_get_inactive_time(NULL) > IDLE_RETURN_MS) {
+        go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_FADE_IN, false);
     }
 }
 
@@ -185,34 +211,37 @@ bool ui_nav_click_allowed(void) {
 }
 
 static void swipe(lv_dir_t dir) {
-    int position = cycle_position(current);
-    if (position >= 0) {
-        if (dir == LV_DIR_LEFT) {
-            ui_nav_go(cycle[(position + 1) % CYCLE_COUNT], LV_SCR_LOAD_ANIM_MOVE_LEFT);
-        } else if (dir == LV_DIR_RIGHT) {
-            ui_nav_go(cycle[(position + CYCLE_COUNT - 1) % CYCLE_COUNT], LV_SCR_LOAD_ANIM_MOVE_RIGHT);
-        } else if (dir == LV_DIR_TOP) {
-            if (current == UI_SCREEN_HOME) {
-                ui_nav_go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_MOVE_TOP);
-            } else {
-                ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP);
-            }
-        } else if (dir == LV_DIR_BOTTOM && current == UI_SCREEN_HOME) {
-            ui_nav_go(UI_SCREEN_HISTORY, LV_SCR_LOAD_ANIM_MOVE_BOTTOM);
-        }
-        return;
-    }
-
     switch (current) {
+    case UI_SCREEN_HOME:
+        if (dir == LV_DIR_TOP) {
+            go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_MOVE_TOP, false);
+        } else if (dir == LV_DIR_BOTTOM) {
+            go(UI_SCREEN_HISTORY, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, false);
+        }
+        break;
+    case UI_SCREEN_EMAIL:
+    case UI_SCREEN_CALENDAR:
+    case UI_SCREEN_WEATHER:
+    case UI_SCREEN_MUSIC:  // the music keeps playing; Home shows what is on
+    case UI_SCREEN_ROWS:
+    case UI_SCREEN_HEADLINES:
+    case UI_SCREEN_ARTICLE:
     case UI_SCREEN_SETTINGS:
     case UI_SCREEN_HISTORY:
         if (dir == LV_DIR_TOP) {
-            ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP);
+            go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP, false);
+        }
+        break;
+    case UI_SCREEN_EMAIL_DETAIL:
+        if (dir == LV_DIR_TOP) {
+            go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP, false);
+        } else if (dir == LV_DIR_RIGHT) {
+            go(ui_email_has_list() ? UI_SCREEN_EMAIL : UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_MOVE_RIGHT, false);
         }
         break;
     case UI_SCREEN_WIFI:
         if (dir == LV_DIR_RIGHT) {
-            ui_nav_go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_MOVE_RIGHT);
+            go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_MOVE_RIGHT, false);
         }
         break;
     case UI_SCREEN_TEXT_ENTRY:
@@ -220,7 +249,11 @@ static void swipe(lv_dir_t dir) {
             ui_text_entry_cancel();
         }
         break;
-    default:
+    case UI_SCREEN_ALARM:
+        if (dir == LV_DIR_TOP) {
+            alarm_ring_stop();
+            go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP, false);
+        }
         break;
     }
 }

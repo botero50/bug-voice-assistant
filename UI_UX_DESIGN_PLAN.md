@@ -4,6 +4,12 @@
 
 For a 1.75" (466×466px) circular AMOLED display with capacitive touch, we design a minimalist voice-first interface that prioritizes voice interaction over screen tapping. The UI is optimized for battery efficiency (dark theme), accessibility (high contrast, large touch targets), and natural conversation flow. This document outlines screens, interactions, and design patterns for all voice assistant skills.
 
+### Working agreement
+
+- Each phase is built and flashed to the board over USB, then tested by the owner on the real device.
+- Nothing is committed or pushed to GitHub when a phase finishes. The owner decides when code goes to GitHub.
+- The skills are voice-first: **saying what you want opens the screen built for it** (see section 3.0). There are no icon pages and no swiping between apps.
+
 ---
 
 ## 1. Display Specifications & Constraints
@@ -67,16 +73,42 @@ The circular display means:
 
 **Minimum touch target:** 1cm × 1cm = ~37×37 pixels (well above 44×44px standard).
 
-**Common gestures:**
-- **Tap:** 300ms hold, release → trigger (e.g., answer call)
-- **Swipe up:** Dismiss current screen, return to home
-- **Swipe down:** Open app menu
-- **Swipe left/right:** Next/previous item in list
-- **Long-press:** Context menu (delete, mute, etc.)
+**Gestures (as built):**
+- **Tap:** open a card or press a button; tap the Home ring to listen without the wake word
+- **Long-press the Home ring:** mute or unmute the microphone
+- **Swipe up on Home:** Settings
+- **Swipe down on Home:** History of recent commands
+- **Swipe up on any other screen:** dismiss it and return Home
+- **Swipe right:** back one step (email detail → list, Wi-Fi list → Settings, keyboard → cancel)
+- No horizontal swiping between apps. Skill screens are opened by voice.
 
 ---
 
 ## 3. Screen Layouts & Flows
+
+### 3.0 Voice Opens the Screen
+
+The assistant is voice-first, so there are no app icons, no pages to swipe between and no menu of apps. Each skill has **one screen built for it**, and that screen opens when the user asks for the skill. The server decides which screen goes with an answer and sends the data for it; the board only draws it.
+
+| User says | What happens |
+|---|---|
+| "Hola Bug, muéstrame los correos" | The email list opens while Bug summarizes it |
+| "Lee el primero" (segundo, tercero…) | The email opens and Bug reads it |
+| "¿Qué tengo en el calendario?" / "Mi agenda" | The agenda opens (today and tomorrow) |
+| "¿Cómo está el clima?" / "¿Va a llover en Cali?" | The weather screen opens (real data; your city unless one is named) |
+| "Pon salsa" / "Pon Tropicana" / "Pon música" | The music screen opens and the radio plays |
+| (tap the ring) "Para la música" / "Otra emisora" / "Sube el volumen" | Controls the radio; the music resumes after each command |
+| "Cambia la ciudad a Cali" / "Detecta mi ciudad" | Saves the city, or goes back to automatic |
+| "¿Qué hora es?" / "¿Qué día es hoy?" | The answer shows on the Home ring; no extra screen needed |
+| "Inicio" / "Cierra" / "Volver" | Back to Home |
+
+Rules:
+1. Voice opens a screen; touch works inside it (tap a card to open it, swipe to go back).
+2. The screen stays until it is dismissed (swipe up, or "Inicio") or 60 seconds pass with no touch and no command, then it returns Home.
+3. While the user talks to Bug on a skill screen, a small banner replaces the clock ("Te escucho…", "Pensando…", "Hablando…"). The skill screen stays visible.
+4. If an answer needs no screen, the Home screen shows it.
+5. Screens that show sample data say "Datos de ejemplo" until the real account is connected.
+6. Skill screens by phase: Email and Calendar first; then Weather and Music (the owner's original asks); then jokes, radio, crypto prices, the book reader and the story generator from section 6.
 
 ### 3.1 Home Screen (Always-On, Voice-First)
 
@@ -97,9 +129,8 @@ The circular display means:
         │                         │
         └─────────────────────────┘
 
-  ◀: Previous (swipe left)
-  ◉: Home (press to return)
-  ▶: Next (swipe right)
+  (As built, Home has no ◀ ◉ ▶ buttons and no page dots: skill screens open by voice.
+   The bottom shows only the battery.)
 ```
 
 **Content:**
@@ -112,11 +143,11 @@ The circular display means:
 - **Battery:** Display percentage color-coded (green >50%, yellow 25-50%, red <25%)
 
 **Tap behaviors:**
-- **Tap center ring:** Force listening state (useful if mic muted or in Gesture-Only mode)
-- **Swipe left/right:** Cycle through apps (email, calendar, jokes, etc.)
+- **Tap center ring:** Listen right now, without the wake word (also a way in when the wake word isn't picked up)
 - **Swipe up:** Go to settings
 - **Swipe down:** Show recent commands/history
-- **Long-press on ring:** Mute mic (shows gray ring)
+- **Long-press on ring:** Mute mic (shows a dim ring and a muted icon)
+- Left/right swipes do nothing on Home; skill screens are opened by voice (section 3.0)
 
 ### 3.2 Voice Feedback During STT/LLM/TTS
 
@@ -212,11 +243,12 @@ The circular display means:
 ```
 
 **Interactions:**
-- **Tap email card:** Read full email (voice announces it)
-- **Swipe left:** Delete email
-- **Swipe right:** Mark as read
-- **Swipe up/down:** Scroll through email list
-- **Voice:** "Read my emails" → reads list, waiting for "Read email 1/2/3", "Delete", "Reply" voice commands
+- **Voice:** "Muéstrame los correos" opens this list while Bug summarizes it; "lee el primero" opens that email and Bug reads it
+- **Tap a card:** open the full email
+- **Swipe up:** back Home; **swipe right** on an open email goes back to the list
+- The list shows the newest 4 plus "+N más". It never scrolls, so swiping up always means "back"
+- Reply and Delete arrive when the real mailboxes are connected. They are not drawn before then, to avoid buttons that do nothing
+- Until then the footer says "Datos de ejemplo"
 
 **Email Detail View (Full Read)**
 ```
@@ -239,7 +271,9 @@ The circular display means:
 
 ### 3.4 Calendar View
 
-**Agenda (Next 24h)**
+**Agenda (Today and tomorrow)**
+
+Opened by voice: "¿Qué tengo en el calendario?", "mi agenda", "mis reuniones". Bug reads today's events aloud while the screen shows both days. Swipe up to go back. The footer says "Datos de ejemplo" until the real calendars are connected.
 ```
         ┌─────────────────────────┐
         │    [3:45] 📅 Today     │
@@ -381,6 +415,113 @@ All screens should be operable via voice:
 ---
 
 ## 6. Skill-Specific UI Layouts
+
+### 6.0 Weather (built)
+
+Opened by voice: "¿cómo está el clima?", "¿va a llover?", "¿qué clima hace en Medellín hoy?". The data is real (Open-Meteo, free, no account). With no city named it uses Bogotá (`BUG_CITY` on the server changes the default); naming any city looks it up.
+
+```
+        ┌─────────────────────────┐
+        │        Medellín         │  ← city (small, gray)
+        │          ☀              │  ← icon drawn from shapes: clear, partly,
+        │          24°            │     cloudy, rain, storm, fog
+        │      Tormenta eléctrica │  ← condition
+        │ Máx 25° · Mín 18° · 100%│  ← today's range and rain chance
+        │                         │
+        │  Dom      Lun     Mar   │  ← next three days
+        │  ☂        ☂       ☂     │
+        │ 28° 18°  30° 18°  30° 17°│
+        └─────────────────────────┘
+```
+
+Bug also says the temperature, the range and the chance of rain aloud. Swipe up to go back Home.
+
+### 6.0b-3 Calendar from ICS links, book reader, volume by number (built)
+
+**Calendar.** The Calendar screen is unchanged; its events now come from your real calendars when
+you give Bug the links. Put one link (or .ics file path) per line in `server/calendar_sources.txt`
+(never committed) or in the `BUG_ICS_URLS` variable. Google Calendar: Settings of the calendar >
+"Secret address in iCal format". Outlook: Settings > Calendar > Shared calendars > Publish a calendar
+(ICS link). Without links the sample events stay. Handles repeating events, all-day events and time
+zones; a moved or cancelled single occurrence of a repeating event is not handled.
+
+**Books.** Put .txt or .epub files in `Documentos\Libros` (or `BUG_BOOKS_DIR`). Say "lee un libro",
+"lee el libro Cien años" (part of the title is enough), then "sigue leyendo" for the next page and
+"repite la página". Each page is about 330 characters, shown on the Article screen with
+"Página n de N" and read aloud. The place is saved per book in `server/reading_state.json`.
+
+**Volume by number.** "Pon el volumen al 50 por ciento" (digits or tens such as "cincuenta").
+
+### 6.0b-2 Music from this PC (built)
+
+Same Music screen as the radio, but the top line says "Mi música", the big line is the song title
+and the small line the artist. The songs are the files in `~/Music` (or the folders in the
+`BUG_MUSIC_DIR` variable, separated by `;`): mp3, m4a, aac, wav, flac, ogg, opus, wma.
+
+| Say | What happens |
+|---|---|
+| "Pon mi música" | Every song, shuffled |
+| "Pon la canción de Shakira" / "pon mi música de Carlos Vives" | Songs whose artist, title or folder match (spelling may be off) |
+| "Siguiente canción" / "canción anterior" | Changes song; the title on screen updates |
+| "Para la música", tap Detener | Stops |
+
+The server plays one song per connection and the board reconnects when it ends, so the next song
+starts about a second later and its title arrives in the response headers. Bug talking pauses the
+music and it resumes at the same second of the same song. "Otra emisora" still changes radio station.
+Audio is 16 kHz mono like the radio.
+
+### 6.0b Music: internet radio (built)
+
+Opened by voice: "pon música", "pon salsa", "pon Tropicana", "pon Olímpica". Stations come from Radio Browser, a free community directory (no account); stations from the user's own city come first. The PC server decodes the stream and sends the board plain audio (16 kHz mono, so it sounds like AM radio for now).
+
+```
+        ┌─────────────────────────┐
+        │          Radio          │
+        │ Olímpica Stereo (Medellín)│  ← station
+        │     Antioquia · salsa   │
+        │        ╭───────╮        │
+        │        │ ▂▅▇▅▂ │        │  ← equalizer follows the real audio
+        │        ╰───────╯        │
+        │  Toca el círculo para   │
+        │        hablar           │
+        │      [ ■ Detener ]      │
+        └─────────────────────────┘
+```
+
+- **Mic and music:** while the radio plays, the board does not listen for "Hola Bug" (it would hear the music). **Tap the ring** to talk: the music pauses, Bug listens and answers, and the music resumes.
+- Voice while it plays (after tapping): "para la música", "otra emisora", "sube el volumen", "baja el volumen", "pon vallenato".
+- Swipe up goes Home and the music keeps playing; Home shows a purple ring and the station name.
+- Later: stream quality (stereo, higher sample rate), the current song title, and your own MP3 files.
+
+### 6.0c The user's city (built)
+
+Weather, and the local stations first in the radio search, use the user's city. It is found automatically from the internet connection (ip-api.com). Saying "cambia la ciudad a Cali" saves a city on the server (`server/user_settings.json`), and "detecta mi ciudad" goes back to automatic. "¿En qué ciudad estoy?" tells which one is in use and why.
+
+### 6.0d Skills that need no account or key (built)
+
+Every one of these opens by voice, with a screen made for it. Their data comes from free services or from this PC, never from Claude.
+
+| Say | Screen | Data |
+|---|---|---|
+| "¿Cuánto está el bitcoin?" | **Prices**: Bitcoin, Ethereum, Solana, in dollars with the 24 h change (green up, red down) and the value in pesos | CoinGecko |
+| "¿A cuánto está el dólar?" | **Prices**: dollar and euro in pesos | open.er-api.com |
+| "¿Cómo está mi computador?" | **Prices screen layout**: processor, memory, graphics card (with temperature) and disk of this PC | psutil and nvidia-smi on this PC |
+| "Dame las noticias" | **Headlines**: four headlines with their sources | Google News (Colombia) |
+| "¿Quién fue Gabriel García Márquez?" | **Article**: title and the first sentences | Wikipedia in Spanish |
+| "Cuéntame un chiste" | **Article** (large, centered text) | 20 built-in jokes |
+| "¿Cuánto es 25 más 17?", "convierte 5 millas a kilómetros", "lanza un dado", "tira una moneda" | None: Bug just answers (also on Home) | Computed on the server |
+
+Conversions cover length, weight, volume, temperature and dollars, euros and pesos with the live rate.
+
+Swipe up goes back Home, as on every skill screen.
+
+### 6.0e Timers, alarms and reminders (built)
+
+Say: "pon un temporizador de 10 minutos", "despiértame a las 6 y media de la mañana", "recuérdame en 20 minutos llamar a Ana", "¿qué temporizadores tengo?", "cancela el temporizador". Bug confirms aloud, and a list screen shows what is set when asked.
+
+- **The board keeps them.** The server only understands the request and keeps the list; each entry is also saved in the board's own memory. They ring on time even if the PC is off, and survive restarts. An entry missed by more than five minutes while the board was off is dropped without ringing.
+- **When one rings:** a burst of three beeps every second for up to a minute (the volume goes to at least 85 % and any radio pauses), and the screen shows a red pulsing ring with a bell, what it is for, and a Stop button. Tap the ring or Stop, or swipe up, to stop it. The radio then resumes.
+- While it rings, the mic does not listen for the wake word, so the beeps aren't sent to the server.
 
 ### 6.1 Jokes
 
@@ -579,20 +720,31 @@ lv_obj_add_style(root, &bg_style, 0);
 
 ## 10. Implementation Roadmap
 
-| Phase | Task | Priority | Est. Time |
-|-------|------|----------|-----------|
-| 1 | Set up LVG dark theme + circular clip | **CRITICAL** | 3 hours |
-| 2 | Home screen layout (rings, time, battery) | **CRITICAL** | 4 hours |
-| 3 | Voice feedback animations (STT/LLM/TTS) | **CRITICAL** | 5 hours |
-| 4 | Email list + detail view | High | 4 hours |
-| 5 | Calendar agenda view | High | 3 hours |
-| 6 | Settings screen + power profile selector | High | 3 hours |
-| 7 | Skill-specific screens (jokes, radio, crypto) | Medium | 6 hours |
-| 8 | Error states + recovery flows | Medium | 3 hours |
-| 9 | Accessibility testing (contrast, touch targets) | Medium | 2 hours |
-| 10 | Animation polish + performance tuning | Low | 3 hours |
+Status as of 2026-11-07. Every phase is flashed to the board and tested by the owner; nothing is pushed to GitHub unless the owner asks.
 
-**Total:** ~36 hours of UI development before Phase 9 deployment.
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | Dark theme, circular layout, Spanish font | Done |
+| 2 | Home screen: ring, transcript, answer, clock, battery | Done |
+| 3 | Voice feedback: waveform, spinner, pulsing ring | Done |
+| 4 | Touch, swipes, tap to listen, long-press mute | Done |
+| 5 | Settings (brightness, volume, mic, Wi-Fi, server) and Wi-Fi setup with keyboard | Done |
+| 6 | History (swipe down) | Done |
+| 7 | **Voice opens screens**: server sends the screen and its data (section 3.0) | Done |
+| 8 | **Email** list and detail, **Calendar** agenda (sample data until accounts connect) | Done |
+| 9 | **Weather** screen (real data) | Done |
+| 9b | **Music** screen (internet radio), volume by voice, the user's city | Done |
+| 9c | Music: your own MP3 files, stereo and better sound, song titles | Later |
+| 10 | Crypto and dollar prices, news, Wikipedia answers, jokes, math and conversions, this PC's status | Done |
+| 10b | Timers, alarms and reminders (the board keeps them and rings even with the PC off) | Done (alarm sound and auto-close fixed) |
+| 10c | Music from your own files on this PC | Built, waiting for your test |
+| 10d | Real calendar from ICS links (built, needs your links) and email (OAuth sign-in) for the Google and Outlook work accounts | Calendar built, email later |
+| 10e | Book reader (txt and epub, one page at a time) | Built, waiting for your test |
+| 10f | Volume by number ("volumen al 50") | Built |
+| 10f | Story generator and open questions (needs a Claude API key) | Waiting for a key |
+| 11 | Connect real Google and Outlook mail and calendar | Later |
+| 12 | Error screens (low battery, mic fault), power profiles | Later |
+| 13 | Accessibility testing, animation polish, performance | Later |
 
 ---
 
