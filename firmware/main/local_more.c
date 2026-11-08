@@ -1,4 +1,5 @@
 #include "cJSON.h"
+#include "esp_random.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "local_skills_internal.h"
@@ -390,6 +391,47 @@ static bool try_briefing(const char *text, local_answer_t *a) {
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------- riddles by voice
+// "Dime una adivinanza" is told aloud (nothing is shown); "la respuesta" tells the answer, and saying the answer is checked.
+static int riddle_current = -1;
+static uint32_t riddle_told_at = 0;
+
+static bool try_riddle(const char *text, local_answer_t *a) {
+    uint32_t now = (uint32_t)(time(NULL));
+    bool active = riddle_current >= 0 && now - riddle_told_at < 300;
+    bool asks = has(text, "adivinanza") || has(text, "adivinanzas") || (active && (has(text, "otra") || strstr(text, " otra adivinanza ")));
+    if (asks && (has(text, "juguemos") || has(text, "jugar") || has(text, "juego") || has(text, "juegos"))) return false;  // the game
+    if (asks) {
+        int next = (int)(esp_random() % (uint32_t)riddle_count());
+        if (next == riddle_current) next = (next + 1) % riddle_count();
+        riddle_current = next;
+        riddle_told_at = now;
+        char spoken[420];
+        snprintf(spoken, sizeof(spoken), "%s ¿Qué es?", riddle_text(next));
+        ls_speak(a, spoken);
+        ls_finish(a, "Una adivinanza.", NULL);
+        return true;
+    }
+    if (!active) return false;
+    if (has(text, "respuesta") || has(text, "rindo") || strstr(text, " no se ") || has(text, "dime")) {
+        char spoken[160];
+        snprintf(spoken, sizeof(spoken), "La respuesta es: %s.", riddle_answer(riddle_current));
+        ls_speak(a, spoken);
+        ls_finish(a, "La respuesta.", NULL);
+        riddle_current = -1;
+        return true;
+    }
+    if (strstr(text, riddle_keyword(riddle_current))) {
+        char spoken[160];
+        snprintf(spoken, sizeof(spoken), "¡Correcto! %s.", riddle_answer(riddle_current));
+        ls_speak(a, spoken);
+        ls_finish(a, "¡Correcto!", NULL);
+        riddle_current = -1;
+        return true;
+    }
+    return false;
+}
+
 // ----------------------------------------------------------------------------------------- gaming area
 static bool try_games(const char *text, local_answer_t *a) {
     bool wants = has(text, "juguemos") || has(text, "jugar") || has(text, "juegos") || has(text, "juego") || has(text, "minijuegos") ||
@@ -423,6 +465,10 @@ static bool try_games(const char *text, local_answer_t *a) {
         {"runner", {" corredor ", " correr ", NULL}},
         {"bubbles", {" burbujas ", " burbuja ", NULL}},
         {"draw", {" dibujo ", " dibujar ", " pintar ", NULL}},
+        {"riddles", {" adivinanzas ", NULL}},
+        {"hangman", {" ahorcado ", NULL}},
+        {"anagram", {" anagrama ", " anagramas ", NULL}},
+        {"adivino", {" akinator ", " adivino ", " veinte preguntas ", " 20 preguntas ", NULL}},
     };
     const char *game = NULL;
     for (size_t i = 0; i < sizeof(NAMES) / sizeof(NAMES[0]) && !game; i++) {
@@ -443,6 +489,7 @@ static bool try_games(const char *text, local_answer_t *a) {
 }
 
 bool local_more_try(const char *original, const char *text, local_answer_t *a) {
+    if (try_riddle(text, a)) return true;
     if (try_games(text, a)) return true;
     if (try_translation(original, text, a)) return true;
     if (try_briefing(text, a)) return true;

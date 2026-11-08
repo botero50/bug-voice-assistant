@@ -28,6 +28,12 @@ bool local_radio_try(const char *original, const char *text, local_answer_t *a);
 // Look of the Home screen: interface and colours, by voice
 bool local_style_try(const char *text, local_answer_t *a);
 
+// The riddles of the game "Adivinanzas" (games_words.c), told by voice too
+int riddle_count(void);
+const char *riddle_text(int i);
+const char *riddle_answer(int i);
+const char *riddle_keyword(int i);
+
 // Jokes, news and Wikipedia (said with the free online voice)
 bool local_online_try(const char *original, const char *text, local_answer_t *a);
 

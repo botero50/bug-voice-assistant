@@ -1,8 +1,16 @@
 # The gaming area
 
-Say **"juguemos"** (or "juegos", "minijuegos") and the board opens the games menu. Say **"juguemos memoria"**, **"2048"**,
-**"mayor o menor"**, **"topos"**, **"simón"** or **"triqui"** to go straight to one. Every game has a **Salir** button at the bottom; the
-menu closes with a swipe up. Records are kept in the board's memory and shown on the menu.
+Say **"juguemos"** (or "juegos", "minijuegos") and the board opens the games menu. Say the name of a game to go straight to it:
+"juguemos memoria", "2048", "ahorcado", "anagrama", "adivino" (or "akinator"), "adivinanzas", "baile"... Every game has a **Salir** button
+under the play area.
+
+**The menu** works in two levels, like a game console. First the six categories (Fuerza, Velocidad, Defensa, Mente, Diversión, Arcade) as
+large coloured tiles with the number of games in each. Tapping one opens its games as **cards you swipe sideways**: each card has the game's
+icon, its name, a line saying how it plays, your record and a **Jugar** button, with dots under the cards that show where you are.
+"‹ Juegos" goes back to the categories and "Salir" on the first level goes Home. Records are kept in the board's memory.
+
+**By voice, without the screen:** "dime una adivinanza" tells a riddle aloud (nothing is shown), "la respuesta" tells the answer, and saying
+the answer is checked ("es la pera"). "Otra adivinanza" tells the next one.
 
 ## What exists today
 
@@ -29,10 +37,14 @@ board's memory. Say "juguemos" for the menu, or the name of a game ("juguemos me
 | | **Preguntas** | 10 general-knowledge questions with 3 answers (20 in the bank) |
 | | **Puzle** | slide the tiles into order 1 to 8; always solvable |
 | | **Mayor o menor** | cards 1 to 9: will the next be higher or lower? three lives |
+| | **Adivinanzas** | 10 riddles with three answers each (20 in the bank) |
+| | **Ahorcado** | guess the word letter by letter; six mistakes; 45 words in categories |
+| | **Anagrama** | put the scrambled letters in order, 90 s; 20 words |
 | Diversión | **Izquierda o derecha** | guess which way it turns; three lives |
 | | **Baile** | 48 notes fall in four columns; tap on the frame (±90 ms = 2 points, ±180 ms = 1); five lives |
 | | **Escondite** | follow the ball under three cups as they swap (3 to 11 swaps, faster each round) |
 | | **Corredor** | tap to jump the obstacles for 90 s; three lives |
+| | **Adivino** | think of an animal: the board asks up to 20 yes/no questions (41 animals) and guesses; fewer questions is better |
 | Arcade | **2048** | swipe any way; equal numbers join into the next |
 | | **Burbujas** | tap groups of two or more of one colour |
 | | **Dibujo** | draw with a finger, pick a colour, clear |
@@ -42,9 +54,9 @@ board's memory. Say "juguemos" for the menu, or the name of a game ("juguemos me
 Everything above builds, flashes and starts, and each game was opened on the board for a few seconds without a crash. **None was played
 yet**, so rules, speed and layout are untested by a person. Merge's rules have host tests (below).
 
-## Documented in this project but not built
+## Documented in this project
 
-From `docs/FEATURES.md` and `README.md`: **Akinator** (20 questions; a PC service), **riddles** and **word games** by voice.
+From `docs/FEATURES.md` and `README.md`: **Akinator** (now **Adivino**, played on the board with no PC), **riddles** (Adivinanzas, in the menu and by voice) and **word games** (Ahorcado and Anagrama). The animals and questions of Adivino come from `server/tools/make_akinator.py`, which writes `firmware/main/aki_data.h`.
 
 ## From TamaPoke (https://github.com/botero50/TamaPoke)
 

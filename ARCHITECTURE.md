@@ -57,6 +57,11 @@ periods with no PC and, often, no internet.
 5. **A free online text-to-speech** for text the board has no recording of (news, Wikipedia, books).
 6. **The PC becomes optional**: it keeps its skills only as a last fallback and for the first-time training of models.
 
+## Dev bridge (planned): the board as a QA companion
+
+See `docs/DEV_BRIDGE_PLAN.md`. It runs on the PC on purpose (the development environment lives there): named actions, `claude -p`, screenshots and
+test-result parsing; the board is the voice, the status panel and the confirmation button.
+
 ## What stays on the PC on purpose
 
 Training the voice models (needs a GPU and PyTorch). Making the recorded words and the test data. Everything else on

@@ -5,6 +5,7 @@
 #include "nvs.h"
 #include "ui_games_internal.h"
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -18,34 +19,39 @@ typedef struct {
     const char *id, *name, *cat, *hint;
     bool higher_is_better;
     lv_obj_t *(*build)(void);
+    const char *icon;  // a symbol for the card
 } game_def_t;
 
 static const game_def_t GAMES[G_COUNT] = {
-    {"moles", "Topos", "Fuerza", "Toca rápido", true, build_moles},
-    {"balloons", "Globos", "Fuerza", "Revienta", true, build_balloon},
-    {"marble", "Canica", "Fuerza", "Inclina o toca", true, build_roll},
-    {"maze", "Laberinto", "Fuerza", "Desliza o inclina", false, build_maze},
-    {"reaction", "Reacción", "Velocidad", "Toca al verde", false, build_react},
-    {"taps", "Toques", "Velocidad", "Toca o sacude", true, build_taps},
-    {"drop", "Lluvia", "Velocidad", "5 carriles", true, build_drop},
-    {"rope", "Cuerda", "Velocidad", "Salta a tiempo", true, build_rope},
-    {"flappy", "Vuelo", "Velocidad", "Entre los tubos", true, build_flappy},
-    {"catch", "Atrapa", "Defensa", "Arrastra o inclina", true, build_catch},
-    {"balance", "Equilibrio", "Defensa", "Inclina o toca", true, build_balance},
-    {"bricks", "Ladrillos", "Defensa", "Rompe todo", true, build_brick},
-    {"memory", "Memoria", "Defensa", "Parejas", false, build_memory},
-    {"simon", "Simón dice", "Defensa", "Repite", true, build_simon},
-    {"shapes", "Figuras", "Mente", "¿Cuál es?", true, build_shape},
-    {"quiz", "Preguntas", "Mente", "10 preguntas", true, build_quiz},
-    {"slide", "Puzle", "Mente", "Ordénalo", false, build_slide},
-    {"highlow", "Mayor o menor", "Mente", "Cartas", true, build_highlow},
-    {"leftright", "Izq. o der.", "Diversión", "Adivina", true, build_lr},
-    {"dance", "Baile", "Diversión", "Al ritmo", true, build_dance},
-    {"cups", "Escondite", "Diversión", "¿Dónde está?", true, build_hide},
-    {"runner", "Corredor", "Diversión", "Salta", true, build_run},
-    {"merge", "2048", "Arcade", "Desliza", true, build_merge},
-    {"bubbles", "Burbujas", "Arcade", "Revienta grupos", true, build_bubbles},
-    {"draw", "Dibujo", "Arcade", "Pinta", true, build_draw},
+    {"moles", "Topos", "Fuerza", "Toca rápido", true, build_moles, LV_SYMBOL_HOME},
+    {"balloons", "Globos", "Fuerza", "Revienta los globos", true, build_balloon, LV_SYMBOL_UPLOAD},
+    {"marble", "Canica", "Fuerza", "Inclina o toca", true, build_roll, LV_SYMBOL_GPS},
+    {"maze", "Laberinto", "Fuerza", "Desliza o inclina", false, build_maze, LV_SYMBOL_DIRECTORY},
+    {"reaction", "Reacción", "Velocidad", "Toca al verde", false, build_react, LV_SYMBOL_POWER},
+    {"taps", "Toques", "Velocidad", "Toca o sacude", true, build_taps, LV_SYMBOL_CHARGE},
+    {"drop", "Lluvia", "Velocidad", "Atrapa en 5 carriles", true, build_drop, LV_SYMBOL_DOWNLOAD},
+    {"rope", "Cuerda", "Velocidad", "Salta a tiempo", true, build_rope, LV_SYMBOL_LOOP},
+    {"flappy", "Vuelo", "Velocidad", "Entre los tubos", true, build_flappy, LV_SYMBOL_EJECT},
+    {"catch", "Atrapa", "Defensa", "Arrastra o inclina", true, build_catch, LV_SYMBOL_DRIVE},
+    {"balance", "Equilibrio", "Defensa", "Inclina o toca", true, build_balance, LV_SYMBOL_MINUS},
+    {"bricks", "Ladrillos", "Defensa", "Rompe todo", true, build_brick, LV_SYMBOL_LIST},
+    {"memory", "Memoria", "Defensa", "Encuentra las parejas", false, build_memory, LV_SYMBOL_COPY},
+    {"simon", "Simón dice", "Defensa", "Repite la melodía", true, build_simon, LV_SYMBOL_BELL},
+    {"shapes", "Figuras", "Mente", "¿Cuál es la silueta?", true, build_shape, LV_SYMBOL_EYE_CLOSE},
+    {"quiz", "Preguntas", "Mente", "10 preguntas", true, build_quiz, LV_SYMBOL_FILE},
+    {"slide", "Puzle", "Mente", "Ordena las fichas", false, build_slide, LV_SYMBOL_SHUFFLE},
+    {"highlow", "Mayor o menor", "Mente", "Cartas del 1 al 9", true, build_highlow, LV_SYMBOL_UP},
+    {"riddles", "Adivinanzas", "Mente", "10 adivinanzas", true, build_riddle, LV_SYMBOL_SETTINGS},
+    {"hangman", "Ahorcado", "Mente", "Adivina la palabra", true, build_hang, LV_SYMBOL_KEYBOARD},
+    {"anagram", "Anagrama", "Mente", "Ordena las letras", true, build_anagram, LV_SYMBOL_REFRESH},
+    {"leftright", "Izquierda o derecha", "Diversión", "Adivina el giro", true, build_lr, LV_SYMBOL_LEFT},
+    {"dance", "Baile", "Diversión", "Sigue el ritmo", true, build_dance, LV_SYMBOL_AUDIO},
+    {"cups", "Escondite", "Diversión", "¿Dónde está la bola?", true, build_hide, LV_SYMBOL_IMAGE},
+    {"runner", "Corredor", "Diversión", "Salta los obstáculos", true, build_run, LV_SYMBOL_NEXT},
+    {"adivino", "Adivino", "Diversión", "20 preguntas", false, build_aki, LV_SYMBOL_WARNING},
+    {"merge", "2048", "Arcade", "Desliza y une", true, build_merge, LV_SYMBOL_PLUS},
+    {"bubbles", "Burbujas", "Arcade", "Revienta grupos", true, build_bubbles, LV_SYMBOL_BATTERY_FULL},
+    {"draw", "Dibujo", "Arcade", "Pinta con el dedo", true, build_draw, LV_SYMBOL_EDIT},
 };
 
 static game_id_t chosen = G_MERGE;
@@ -156,6 +162,20 @@ void g_say(const char *format, ...) {
     lv_label_set_text(info_label, text);
 }
 
+bool g_screen_alive(void) {
+    return screen_obj != NULL;
+}
+
+static void again_cb(lv_event_t *e);
+
+void g_offer_again(void) {
+    g_playing = false;
+    if (!screen_obj) return;
+    lv_obj_t *b = g_button(screen_obj, 140, 44, lv_color_make(34, 150, 80), "Otra vez", bug_font_body);
+    lv_obj_align(b, LV_ALIGN_TOP_MID, 0, ARENA_Y + ARENA_H - 60);
+    lv_obj_add_event_cb(b, again_cb, LV_EVENT_SHORT_CLICKED, NULL);
+}
+
 static void again_cb(lv_event_t *e) {
     if (!g_click_ok()) return;
     char path[32];
@@ -166,11 +186,7 @@ static void again_cb(lv_event_t *e) {
 void g_finish(game_id_t g, uint16_t result, const char *what) {
     bool record = best_offer(g, result);
     g_say("%s %u%s", what, (unsigned)result, record ? " · ¡récord!" : "");
-    g_playing = false;
-    if (!screen_obj) return;
-    lv_obj_t *b = g_button(screen_obj, 140, 44, lv_color_make(34, 150, 80), "Otra vez", bug_font_body);
-    lv_obj_align(b, LV_ALIGN_TOP_MID, 0, ARENA_Y + ARENA_H - 60);
-    lv_obj_add_event_cb(b, again_cb, LV_EVENT_SHORT_CLICKED, NULL);
+    g_offer_again();
 }
 
 static void leave_cb(lv_event_t *e) {
@@ -536,27 +552,100 @@ lv_obj_t *build_merge(void) {
 }
 
 // =========================================================================================================== menu
-static void hub_tap(lv_event_t *e) {
-    if (!g_click_ok()) return;
-    int i = (int)(intptr_t)lv_event_get_user_data(e);
+// Two levels, like a game console: first the categories as big tiles, then the games of one category as cards you swipe through,
+// with dots under them to show where you are. A card (or its Jugar button) starts the game.
+
+typedef struct {
+    const char *name;
+    const char *symbol;  // drawn in the big disc
+    uint8_t r, g, b;
+} category_t;
+
+static const category_t CATEGORIES[] = {
+    {"Fuerza", LV_SYMBOL_CHARGE, 239, 84, 68},
+    {"Velocidad", LV_SYMBOL_PLAY, 34, 197, 94},
+    {"Defensa", LV_SYMBOL_EYE_OPEN, 59, 130, 246},
+    {"Mente", LV_SYMBOL_EDIT, 168, 85, 247},
+    {"Diversión", LV_SYMBOL_AUDIO, 236, 72, 153},
+    {"Arcade", LV_SYMBOL_SHUFFLE, 245, 158, 11},
+};
+#define CATEGORY_COUNT ((int)(sizeof(CATEGORIES) / sizeof(CATEGORIES[0])))
+
+static int hub_category = -1;  // -1: the categories; otherwise the games of that category
+static lv_obj_t *hub_track = NULL, *hub_dots[24];
+static int hub_cards = 0, hub_card_ids[24];
+
+static lv_color_t category_color(int c) {
+    return lv_color_make(CATEGORIES[c].r, CATEGORIES[c].g, CATEGORIES[c].b);
+}
+
+static int category_of(const char *name) {
+    for (int c = 0; c < CATEGORY_COUNT; c++) {
+        if (strcmp(CATEGORIES[c].name, name) == 0) return c;
+    }
+    return 0;
+}
+
+static int games_in(int category) {
+    int n = 0;
+    for (int i = 0; i <= G_COUNT; i++) {
+        const char *cat = i == G_COUNT ? "Arcade" : GAMES[i].cat;
+        n += category_of(cat) == category;
+    }
+    return n;
+}
+
+static void start_game(int i) {
     if (i == G_COUNT) {
         ui_nav_open_screen("triqui", NULL);
-    } else {
-        char path[32];
-        snprintf(path, sizeof(path), "games?g=%s", GAMES[i].id);
-        ui_nav_open_screen(path, NULL);
+        return;
+    }
+    char path[32];
+    snprintf(path, sizeof(path), "games?g=%s", GAMES[i].id);
+    ui_nav_open_screen(path, NULL);
+}
+
+static void tile_tap(lv_event_t *e) {
+    if (!g_click_ok()) return;
+    char path[24];
+    snprintf(path, sizeof(path), "games?c=%d", (int)(intptr_t)lv_event_get_user_data(e));
+    ui_nav_open_screen(path, NULL);
+}
+
+static void card_tap(lv_event_t *e) {
+    if (g_click_ok()) start_game((int)(intptr_t)lv_event_get_user_data(e));
+}
+
+static void hub_leave(lv_event_t *e) {
+    if (!g_click_ok()) return;
+    if (hub_category >= 0) ui_nav_open_screen("games", NULL);  // back to the categories
+    else ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP);
+}
+
+#define CARD_W 214
+#define CARD_H 262
+#define CARD_GAP 14
+
+static void dots_update(lv_event_t *e) {
+    if (!hub_track) return;
+    int index = (lv_obj_get_scroll_x(hub_track) + (CARD_W + CARD_GAP) / 2) / (CARD_W + CARD_GAP);
+    if (index < 0) index = 0;
+    if (index >= hub_cards) index = hub_cards - 1;
+    lv_color_t accent = category_color(hub_category);
+    for (int i = 0; i < hub_cards; i++) {
+        lv_obj_set_size(hub_dots[i], i == index ? 18 : 8, 8);
+        lv_obj_set_style_bg_color(hub_dots[i], i == index ? accent : lv_color_make(70, 74, 92), 0);
     }
 }
 
-static lv_obj_t *hub_list = NULL;
-static bool hub_bench = false;
+static bool hub_bench = false;  // for measuring the cards' scrolling: "games?c=3&bench" scrolls them by itself
 static lv_timer_t *bench_timer = NULL;
 
 static void bench_tick(lv_timer_t *t) {
-    static int direction = -1, steps = 0;
-    if (!hub_list) return;
-    lv_obj_scroll_by(hub_list, 0, direction * 10, LV_ANIM_OFF);
-    if (++steps >= 30) {
+    static int direction = 1, steps = 0;
+    if (!hub_track) return;
+    lv_obj_scroll_by(hub_track, direction * -14, 0, LV_ANIM_OFF);
+    if (++steps >= 40) {
         steps = 0;
         direction = -direction;
     }
@@ -567,62 +656,148 @@ static void hub_deleted(lv_event_t *e) {
         lv_timer_del(bench_timer);
         bench_timer = NULL;
     }
-    hub_list = NULL;
+    hub_track = NULL;
+    for (int i = 0; i < 24; i++) hub_dots[i] = NULL;
 }
 
-void ui_games_set_bench(bool on) {
-    hub_bench = on;
-}
-
-static void hub_leave(lv_event_t *e) {
-    if (g_click_ok()) ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP);
-}
-
-lv_obj_t *ui_games_hub_build(void) {
+static lv_obj_t *build_categories(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_add_event_cb(screen, hub_deleted, LV_EVENT_DELETE, NULL);
     lv_obj_t *title = g_label(screen, bug_font_body, COLOR_TEXT_PRIMARY, 260);
     lv_label_set_text(title, "Juegos");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 62);
-
-    // A list that scrolls, with the category names between the games
-    lv_obj_t *list = lv_obj_create(screen);
-    lv_obj_remove_style_all(list);
-    lv_obj_set_size(list, 280, 262);
-    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 96);
-    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(list, 6, 0);
-    lv_obj_set_scroll_dir(list, LV_DIR_VER);
-    lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
-    hub_list = list;
-    lv_obj_add_event_cb(screen, hub_deleted, LV_EVENT_DELETE, NULL);
-    const char *category = "";
-    for (int i = 0; i <= G_COUNT; i++) {
-        const char *cat = i == G_COUNT ? "Arcade" : GAMES[i].cat;
-        if (strcmp(cat, category) != 0 && i < G_COUNT) {
-            category = cat;
-            lv_obj_t *h = g_label(list, bug_font_small, lv_color_make(245, 158, 11), 280);
-            lv_label_set_text(h, category);
-        }
-        lv_obj_t *b = g_button(list, 270, 46, lv_color_make(44, 48, 62), NULL, bug_font_body);
-        lv_obj_set_style_radius(b, 0, 0);  // flat rows scroll faster
-        lv_obj_t *n = lv_label_create(b);
-        lv_label_set_text(n, i == G_COUNT ? "Triqui" : GAMES[i].name);
-        lv_obj_set_style_text_font(n, bug_font_small, 0);
-        lv_obj_set_style_text_color(n, COLOR_TEXT_PRIMARY, 0);
-        lv_obj_align(n, LV_ALIGN_LEFT_MID, 6, 0);
-        lv_obj_t *r = lv_label_create(b);
-        if (i < G_COUNT && g_best((game_id_t)i)) lv_label_set_text_fmt(r, "récord %u", (unsigned)g_best((game_id_t)i));
-        else lv_label_set_text(r, i == G_COUNT ? "Tú eres la X" : GAMES[i].hint);
-        lv_obj_set_style_text_font(r, bug_font_small, 0);
-        lv_obj_set_style_text_color(r, COLOR_TEXT_SECONDARY, 0);
-        lv_obj_align(r, LV_ALIGN_RIGHT_MID, -6, 0);
-        lv_obj_add_event_cb(b, hub_tap, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+    for (int c = 0; c < CATEGORY_COUNT; c++) {
+        lv_color_t color = category_color(c);
+        lv_obj_t *tile = lv_btn_create(screen);
+        lv_obj_set_size(tile, 138, 88);
+        lv_obj_set_pos(tile, 233 - 143 + (c % 2) * 148, 98 + (c / 2) * 98);
+        lv_obj_set_style_radius(tile, 22, 0);
+        lv_obj_set_style_bg_color(tile, lv_color_mix(color, lv_color_black(), 70), 0);
+        lv_obj_set_style_border_width(tile, 2, 0);
+        lv_obj_set_style_border_color(tile, lv_color_mix(color, lv_color_black(), 150), 0);
+        lv_obj_set_style_shadow_width(tile, 0, 0);
+        lv_obj_set_style_pad_all(tile, 0, 0);
+        lv_obj_t *disc = g_box(tile, 8, 4, 36, 36, color, CIRCLE_RADIUS);
+        lv_obj_t *icon = lv_label_create(disc);
+        lv_label_set_text(icon, CATEGORIES[c].symbol);
+        lv_obj_set_style_text_font(icon, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(icon, lv_color_white(), 0);
+        lv_obj_center(icon);
+        lv_obj_t *name = lv_label_create(tile);
+        lv_label_set_text(name, CATEGORIES[c].name);
+        lv_obj_set_style_text_font(name, bug_font_small, 0);
+        lv_obj_set_style_text_color(name, COLOR_TEXT_PRIMARY, 0);
+        lv_obj_set_pos(name, 10, 42);
+        lv_obj_t *count = lv_label_create(tile);
+        lv_label_set_text_fmt(count, "%d juegos", games_in(c));
+        lv_obj_set_style_text_font(count, bug_font_small, 0);
+        lv_obj_set_style_text_color(count, lv_color_mix(color, lv_color_white(), 150), 0);
+        lv_obj_set_pos(count, 10, 62);
+        lv_obj_add_event_cb(tile, tile_tap, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)c);
     }
     lv_obj_t *leave = g_button(screen, 110, 36, lv_color_make(60, 60, 66), "Salir", bug_font_small);
-    lv_obj_align(leave, LV_ALIGN_TOP_MID, 0, 366);
+    lv_obj_align(leave, LV_ALIGN_TOP_MID, 0, 380);
     lv_obj_add_event_cb(leave, hub_leave, LV_EVENT_SHORT_CLICKED, NULL);
+    return screen;
+}
+
+static lv_obj_t *build_carousel(int category) {
+    lv_color_t color = category_color(category);
+    lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_add_event_cb(screen, hub_deleted, LV_EVENT_DELETE, NULL);
+    lv_obj_t *title = g_label(screen, bug_font_body, color, 260);
+    lv_label_set_text(title, CATEGORIES[category].name);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 62);
+
+    // The cards: a row that scrolls sideways and stops with one card in the middle
+    lv_obj_t *track = lv_obj_create(screen);
+    lv_obj_remove_style_all(track);
+    lv_obj_set_size(track, 466, CARD_H);
+    lv_obj_align(track, LV_ALIGN_TOP_MID, 0, 92);
+    lv_obj_set_flex_flow(track, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(track, CARD_GAP, 0);
+    lv_obj_set_style_pad_left(track, (466 - CARD_W) / 2, 0);
+    lv_obj_set_style_pad_right(track, (466 - CARD_W) / 2, 0);
+    lv_obj_set_scroll_dir(track, LV_DIR_HOR);
+    lv_obj_set_scroll_snap_x(track, LV_SCROLL_SNAP_CENTER);
+    lv_obj_set_scrollbar_mode(track, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+    hub_track = track;
+    hub_cards = 0;
+
+    for (int i = 0; i <= G_COUNT && hub_cards < 24; i++) {
+        const char *cat = i == G_COUNT ? "Arcade" : GAMES[i].cat;
+        if (category_of(cat) != category) continue;
+        const char *name = i == G_COUNT ? "Triqui" : GAMES[i].name;
+        const char *hint = i == G_COUNT ? "Tú eres la X" : GAMES[i].hint;
+        const char *icon = i == G_COUNT ? LV_SYMBOL_CLOSE : GAMES[i].icon;
+        hub_card_ids[hub_cards] = i;
+
+        lv_obj_t *card = lv_obj_create(track);
+        lv_obj_remove_style_all(card);
+        lv_obj_set_size(card, CARD_W, CARD_H);
+        lv_obj_set_style_radius(card, 30, 0);
+        lv_obj_set_style_bg_color(card, lv_color_make(26, 28, 40), 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(card, 2, 0);
+        lv_obj_set_style_border_color(card, lv_color_mix(color, lv_color_black(), 120), 0);
+        lv_obj_add_flag(card, LV_OBJ_FLAG_SNAPPABLE);
+        lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(card, LV_OBJ_FLAG_EVENT_BUBBLE);
+        lv_obj_add_event_cb(card, card_tap, LV_EVENT_SHORT_CLICKED, (void *)(intptr_t)i);
+
+        lv_obj_t *disc = g_box(card, (CARD_W - 84) / 2, 18, 84, 84, color, CIRCLE_RADIUS);
+        lv_obj_clear_flag(disc, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_t *glyph = lv_label_create(disc);
+        lv_label_set_text(glyph, icon);
+        lv_obj_set_style_text_font(glyph, &lv_font_montserrat_28, 0);
+        lv_obj_set_style_text_color(glyph, lv_color_white(), 0);
+        lv_obj_center(glyph);
+
+        lv_obj_t *n = g_label(card, bug_font_body, COLOR_TEXT_PRIMARY, CARD_W - 20);
+        lv_label_set_text(n, name);
+        lv_obj_align(n, LV_ALIGN_TOP_MID, 0, 116);
+        lv_obj_t *h = g_label(card, bug_font_small, COLOR_TEXT_SECONDARY, CARD_W - 20);
+        lv_label_set_text(h, hint);
+        lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 148);
+        lv_obj_t *r = g_label(card, bug_font_small, lv_color_mix(color, lv_color_white(), 160), CARD_W - 20);
+        if (i < G_COUNT && g_best((game_id_t)i)) lv_label_set_text_fmt(r, "Récord %u", (unsigned)g_best((game_id_t)i));
+        else lv_label_set_text(r, i < G_COUNT ? "Sin récord" : "");
+        lv_obj_align(r, LV_ALIGN_TOP_MID, 0, 172);
+
+        lv_obj_t *play = g_button(card, 130, 42, color, LV_SYMBOL_PLAY "  Jugar", bug_font_small);
+        lv_obj_set_style_radius(play, 21, 0);
+        lv_obj_align(play, LV_ALIGN_BOTTOM_MID, 0, -16);
+        lv_obj_add_flag(play, LV_OBJ_FLAG_EVENT_BUBBLE);
+        hub_cards++;
+    }
+
+    // The dots under the cards
+    int dots_w = hub_cards * 14;
+    lv_obj_t *row = lv_obj_create(screen);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, dots_w + 24, 14);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 358);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    for (int i = 0; i < hub_cards; i++) {
+        hub_dots[i] = g_box(row, 0, 0, 8, 8, lv_color_make(70, 74, 92), 4);
+    }
+    lv_obj_add_event_cb(track, dots_update, LV_EVENT_SCROLL, NULL);
+    lv_obj_add_event_cb(track, dots_update, LV_EVENT_SCROLL_END, NULL);
+
+    lv_obj_t *leave = g_button(screen, 120, 34, lv_color_make(60, 60, 66), LV_SYMBOL_LEFT "  Juegos", bug_font_small);
+    lv_obj_align(leave, LV_ALIGN_TOP_MID, 0, 380);
+    lv_obj_add_event_cb(leave, hub_leave, LV_EVENT_SHORT_CLICKED, NULL);
+    dots_update(NULL);
     if (hub_bench) bench_timer = lv_timer_create(bench_tick, 33, NULL);
     return screen;
+}
+
+lv_obj_t *ui_games_hub_build(void) {
+    return hub_category >= 0 && hub_category < CATEGORY_COUNT ? build_carousel(hub_category) : build_categories();
 }
 
 lv_obj_t *ui_game_build(void) {
@@ -630,7 +805,13 @@ lv_obj_t *ui_game_build(void) {
 }
 
 int ui_games_choose(const char *game) {
+    hub_category = -1;
+    hub_bench = game && strstr(game, "bench") != NULL;
     if (!game || !game[0] || strcmp(game, "hub") == 0) return 0;
+    if (game[0] == 'c' && game[1] == '=') {  // "games?c=3": the games of one category
+        hub_category = atoi(game + 2);
+        return 0;
+    }
     if (strcmp(game, "triqui") == 0) return 2;
     for (int i = 0; i < G_COUNT; i++) {
         size_t n = strlen(GAMES[i].id);

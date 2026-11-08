@@ -20,9 +20,9 @@ typedef enum {
     // Defensa
     G_CATCH, G_BALANCE, G_BRICK, G_MEMORY, G_SIMON,
     // Mente
-    G_SHAPE, G_QUIZ, G_SLIDE, G_HIGHLOW,
+    G_SHAPE, G_QUIZ, G_SLIDE, G_HIGHLOW, G_RIDDLE, G_HANG, G_ANAGRAM,
     // Diversión
-    G_LR, G_DANCE, G_HIDE, G_RUN,
+    G_LR, G_DANCE, G_HIDE, G_RUN, G_AKI,
     // Arcade
     G_MERGE, G_BUBBLES, G_DRAW,
     G_COUNT
@@ -49,7 +49,8 @@ void g_beep(float hz, int ms);
 uint32_t g_rand(uint32_t n);                 // 0 .. n-1
 lv_color_t g_hue(int i);                     // eight bright colours
 void g_on_close(void (*fn)(void));           // called when the game's screen is deleted (free memory)
-bool g_click_ok(void);                       // false right after a swipe
+bool g_click_ok(void);
+#define CIRCLE_RADIUS LV_RADIUS_CIRCLE                       // false right after a swipe
 
 // Every game's builder
 lv_obj_t *build_moles(void), *build_balloon(void), *build_roll(void), *build_maze(void);
@@ -58,5 +59,9 @@ lv_obj_t *build_catch(void), *build_balance(void), *build_brick(void), *build_me
 lv_obj_t *build_shape(void), *build_quiz(void), *build_slide(void), *build_highlow(void);
 lv_obj_t *build_lr(void), *build_dance(void), *build_hide(void), *build_run(void);
 lv_obj_t *build_merge(void), *build_bubbles(void), *build_draw(void);
+lv_obj_t *build_riddle(void), *build_hang(void), *build_anagram(void), *build_aki(void);
+
+void g_offer_again(void);      // shows the "Otra vez" button (the game ended in a way g_finish does not cover)
+bool g_screen_alive(void);     // the game's screen still exists (for timers that fire later)
 
 #endif

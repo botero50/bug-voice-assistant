@@ -185,7 +185,7 @@ Start with "Hola Bug" (or tap the ring), then:
   "apaga la música en 30 minutos", "sube / baja el volumen", "pon el volumen al 50 por ciento".
 - Everyday: "cuándo es el próximo festivo", "mañana es festivo", "cuántos días faltan para Navidad",
   "a qué hora se oculta el sol", "cómo se dice casa en inglés".
-- Games (see `docs/GAMES.md`): "juguemos" opens the games menu; "juguemos memoria", "2048", "mayor o menor", "topos", "simón dice" and
+- Games (see `docs/GAMES.md`): "juguemos" opens the games menu (categories, then cards to swipe); "dime una adivinanza" tells a riddle aloud; "juguemos memoria", "2048", "mayor o menor", "topos", "simón dice" and
   "juguemos al triqui" go straight to one. "Juguemos trivia" then "la B", "otra pregunta" is a voice game.
 - Firmware: "busca una actualización del firmware" (the board updates itself from the installer page).
 - Online voice skills (the board speaks with a free online voice, so they need internet): "cuéntame un chiste", "dame las noticias",

@@ -183,9 +183,8 @@ void ui_nav_open_screen(const char *path, const char *json) {
         return;
     }
     if (strncmp(path, "games", 5) == 0) {  // "games" is the menu, "games?g=memory" starts a game
-        ui_games_set_bench(strstr(path, "bench") != NULL);
-        const char *g = strstr(path, "g=");
-        int kind = ui_games_choose(g ? g + 2 : "");
+        const char *g = strstr(path, "g="), *c = strstr(path, "c=");
+        int kind = ui_games_choose(g ? g + 2 : (c ? c : ""));
         go(kind == 0 ? UI_SCREEN_GAMES : kind == 1 ? UI_SCREEN_GAME : UI_SCREEN_TRIQUI, LV_SCR_LOAD_ANIM_FADE_IN, true);
         return;
     }

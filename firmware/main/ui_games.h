@@ -14,7 +14,5 @@ lv_obj_t *ui_game_build(void);
 // or "triqui". Returns the screen to open: 0 = the menu, 1 = a game, 2 = tic-tac-toe.
 int ui_games_choose(const char *game);
 
-// For measuring: the menu scrolls itself up and down (see "games?bench")
-void ui_games_set_bench(bool on);
 
 #endif
