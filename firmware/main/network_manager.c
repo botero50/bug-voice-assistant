@@ -59,6 +59,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "✓ WiFi connected: " IPSTR, IP2STR(&event->ip_info.ip));
+        esp_wifi_set_ps(WIFI_PS_NONE);  // the radio sleeping between beacons added seconds to every answer
         last_error = NET_ERR_NONE;
         xEventGroupClearBits(wifi_event_group, WIFI_FAILED_BIT);
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);

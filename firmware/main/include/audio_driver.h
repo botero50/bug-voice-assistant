@@ -21,6 +21,11 @@ esp_err_t audio_stop_recording(void);
 esp_err_t audio_read_samples(int16_t *buffer, size_t buffer_size, size_t *read_size);
 esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size);
 
+// Music: 32 kHz, 16-bit mono (twice the bandwidth of the voice path). Sizes are in bytes.
+#define AUDIO_MUSIC_RATE 32000
+esp_err_t audio_write_music(const int16_t *buffer, size_t buffer_size);
+float audio_output_level(void);  // 0..1, how loud the sound being played is
+
 // Turns the speaker amplifier on or off. Keep it off when idle to avoid hiss.
 void audio_set_speaker(bool enabled);
 

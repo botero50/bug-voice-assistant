@@ -41,3 +41,18 @@ server/reading_state.json
 server/mail_accounts.json
 server/lists.json
 server/favorites.json
+server/voices/
+server/wake_data/
+
+# Test programs built on this PC
+server/skills_test/*.exe
+server/skills_test/stubs3/
+server/skills_test/stubs2/
+server/skills_test/sd_books/
+server/skills_test/t.ics
+server/skills_test/local_more_host.c
+
+# Voice recordings and trained models stay on this PC (they are made again by server/wake/train_commands.py)
+server/wake/*.raw
+server/wake/*.pt
+server/wake/*.exe

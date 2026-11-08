@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -30,6 +31,7 @@ import personal
 import radio
 import sample_data
 import timers
+import train_api
 import trivia
 from location import DEFAULT_CITY, current_place, forget_place, geocode, get_json, save_place
 from text_utils import normalize
@@ -47,6 +49,7 @@ MIN_SECONDS = 0.4
 COLOMBIA = timezone(timedelta(hours=-5))  # Colombia has no daylight saving time
 
 app = Flask(__name__)
+app.register_blueprint(train_api.blueprint)
 model = None
 
 
@@ -522,6 +525,10 @@ def skill_triqui(_text):
     return "Juguemos al triqui. Tú eres la equis, toca una casilla.", "triqui?cmd=new"
 
 
+def skill_training(_text):
+    return "Empecemos. Di cada frase que veas en la pantalla cuando suene el tono.", "train?start"
+
+
 def skill_stopwatch(text):
     """The board keeps the stopwatch; the server only says what to do with it."""
     if re.search(r"\b(reinicia\w*|resetea\w*|reset|en cero|a cero|borra\w*|limpia\w*)\b", text):
@@ -731,6 +738,7 @@ SKILLS = [
     (re.compile(r"\b(buenos dias|buen dia)\b|\b(resumen|que hay para hoy|como (va|amanecio) el dia)\b"),
      skill_briefing),
     (re.compile(r"\b(actualiza\w*|busca\w*|instala\w*)\b.*\b(firmware|actualizacion\w*|version)\b|\bactualizate\b"), skill_firmware_update),
+    (re.compile(r"\b(entrena\w*|entrenamiento|graba\w* mi voz|ensename a escucharte)\b"), skill_training),
     (re.compile(r"\bcronometro\b"), skill_stopwatch),
     (re.compile(r"\b(triqui|tres en raya|tres en linea|ta te ti)\b|\bjuguemos\b|\bjugar\b.*\bgato\b"), skill_triqui),
     *personal.SKILLS,
@@ -776,8 +784,7 @@ SKILLS = [
     (re.compile(r"\bgracias\b"), lambda _t: "Con gusto."),
     *extras.GENERIC_SKILLS,  # "¿quién fue...?" and similar, only when nothing more specific matched
 ]
-FALLBACK = ("Todavía no sé hacer eso. Puedo decirte la hora, el clima, las noticias o el precio del dólar, "
-            "poner música, contar un chiste, hacer cuentas y buscar en Wikipedia.")
+FALLBACK = "No te entendí."
 
 
 ORIGINAL_TEXT = extras.ORIGINAL  # the accented sentence for the skill running now (radio search, math, conversions)
@@ -836,7 +843,9 @@ def load_model():
     raise RuntimeError("no speech recognition model could be loaded")
 
 
-def transcribe(pcm):
+def transcribe(pcm, fast=False):
+    """fast=True is for the wake-word check: no beam search, no retries at higher temperatures (those made a
+    recording of plain noise take 2-3 seconds) and a short answer."""
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
     if len(audio) < SAMPLE_RATE * MIN_SECONDS:
         return ""
@@ -847,38 +856,123 @@ def transcribe(pcm):
     segments, _ = model.transcribe(
         audio,
         language="es",
-        beam_size=MODEL_INFO["beam"],
+        beam_size=1 if fast else MODEL_INFO["beam"],
+        temperature=0.0 if fast else [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        max_new_tokens=24 if fast else None,
+        without_timestamps=fast,
         condition_on_previous_text=False,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 400},
         # The words Bug expects: Whisper spells them right far more often when it has seen them first
-        initial_prompt=("Hola Bug. Hey Bug. ¿Qué hora es? Pon salsa. Pon Tropicana. Pon Olímpica Stereo. Cambia de emisora. "
-                        "Sube el volumen. Baja el volumen. Para la música. Muéstrame los correos. Lee el primero. "
-                        "¿Qué tengo en el calendario? ¿Cómo está el clima en Cali? Cambia la ciudad a Medellín. "
-                        "Pon mi música. Siguiente canción. Pon un temporizador de 10 minutos. Despiértame a las 6 y media. "
-                        "Inicia el cronómetro. Juguemos al triqui. Juguemos trivia. Agrega leche a la lista de compras. "
-                        "Anota que mañana hay reunión. Buenos días. Guarda esta emisora en favoritas. Lee el libro. "
-                        "Sigue leyendo. Apaga la música en 30 minutos. ¿Cuánto es 25 más 17? Convierte 5 millas a kilómetros."),
+        # A short hint: the words Bug expects. A long prompt made recognition 2-3 times slower and made
+        # Whisper repeat the prompt's own sentences when it heard only noise.
+        initial_prompt="Hola Bug. Hey Bug. ¿Qué hora es? Pon salsa. Pon un temporizador. Cronómetro, triqui, trivia, favoritas.",
     )
     return " ".join(s.text.strip() for s in segments).strip()
 
 
-async def _tts_mp3(text):
+async def _tts_once(text):
     import edge_tts
 
     audio = bytearray()
     async for chunk in edge_tts.Communicate(text, VOICE).stream():
         if chunk["type"] == "audio":
             audio += chunk["data"]
+    if not audio:
+        raise RuntimeError("the voice service returned no audio")
     return bytes(audio)
+
+
+HEDGE_AFTER_SECONDS = 2.0  # a normal answer takes 1-1.8 s; a stalled connection can take 10 s or more
+TTS_ATTEMPTS = 3
+
+
+async def _tts_mp3(text):
+    """Edge TTS, with a backup request started whenever the answer is late: the first one to finish wins.
+    (A request that stalls on a bad connection used to hold every answer up for 10 seconds.)"""
+    tasks = []
+    try:
+        for attempt in range(TTS_ATTEMPTS):
+            tasks.append(asyncio.ensure_future(_tts_once(text)))
+            done, _ = await asyncio.wait(tasks, timeout=HEDGE_AFTER_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                if not task.exception():
+                    if attempt:
+                        log.info("TTS: backup request %d answered first", attempt + 1)
+                    return task.result()
+            tasks = [t for t in tasks if not t.done()] or tasks
+        done, _ = await asyncio.wait(tasks, timeout=15, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if not task.exception():
+                return task.result()
+        raise RuntimeError("the voice service did not answer")
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+
+# ---- local voice (Piper): about 0.1 s per sentence, works without the internet ----
+PIPER_MODEL = Path(__file__).with_name("voices") / "es_MX-claude-high.onnx"
+TTS_ENGINE = os.getenv("BUG_TTS", "auto")  # auto: online voice, the local one when it is late; piper; edge
+EDGE_BUDGET_SECONDS = float(os.getenv("BUG_TTS_EDGE_BUDGET", "1.4"))
+_piper = {"voice": None, "failed": False}
+_piper_lock = threading.Lock()
+
+
+def piper_ready():
+    if _piper["voice"] or _piper["failed"]:
+        return _piper["voice"] is not None
+    with _piper_lock:
+        if _piper["voice"] is None and not _piper["failed"]:
+            try:
+                from piper import PiperVoice
+                _piper["voice"] = PiperVoice.load(str(PIPER_MODEL)) if PIPER_MODEL.exists() else None
+                _piper["failed"] = _piper["voice"] is None
+            except Exception as error:
+                log.warning("Local voice unavailable: %s", error)
+                _piper["failed"] = True
+    return _piper["voice"] is not None
+
+
+def piper_pcm(text):
+    """16 kHz, 16-bit mono PCM of the text in the local voice."""
+    import io
+    import wave
+
+    voice = _piper["voice"]
+    buffer = io.BytesIO()
+    with _piper_lock:
+        with wave.open(buffer, "wb") as out:
+            voice.synthesize_wav(text, out)
+    buffer.seek(0)
+    with wave.open(buffer, "rb") as wav:
+        rate, frames = wav.getframerate(), wav.readframes(wav.getnframes())
+    if rate != SAMPLE_RATE:
+        samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+        positions = np.arange(0, len(samples), rate / SAMPLE_RATE)
+        frames = np.interp(positions, np.arange(len(samples)), samples).astype(np.int16).tobytes()
+    return frames
 
 
 @functools.lru_cache(maxsize=64)
 def synthesize(text):
-    """Returns 16 kHz, 16-bit mono PCM of the text in Salomé's voice."""
+    """Returns 16 kHz, 16-bit mono PCM of the text, spoken."""
     import miniaudio
 
-    mp3 = asyncio.run(_tts_mp3(text))
+    use_local = TTS_ENGINE in ("auto", "piper") and piper_ready()
+    if TTS_ENGINE == "piper" and use_local:
+        return piper_pcm(text)
+    try:
+        coroutine = _tts_mp3(text)
+        if use_local:
+            coroutine = asyncio.wait_for(coroutine, EDGE_BUDGET_SECONDS)
+        mp3 = asyncio.run(coroutine)
+    except Exception as error:
+        if not use_local:
+            raise
+        log.info("Online voice was late or failed (%s): using the local voice", error.__class__.__name__)
+        return piper_pcm(text)
     decoded = miniaudio.decode(
         mp3, output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=SAMPLE_RATE
     )
@@ -897,6 +991,50 @@ def respond(action, heard="", body=b"", reply="", screen=None):
     if screen:
         headers["X-Screen"] = quote(screen, safe="?=&")
     return Response(body, mimetype="application/octet-stream", headers=headers)
+
+
+@app.route("/", methods=["GET", "POST"])
+def root():
+    """Something on this PC posts to / dozens of times a second (found while testing); answer it
+    quietly so it neither fills the log nor costs anything."""
+    return "", 204
+
+
+class _QuietRoot(logging.Filter):
+    def filter(self, record):
+        return "POST / HTTP" not in record.getMessage()
+
+
+logging.getLogger("werkzeug").addFilter(_QuietRoot())
+
+
+@app.route("/bench", methods=["GET", "POST"])
+def bench():
+    """Network speed test for the board: GET /bench?kb=200 sends that many KB; POST receives and counts."""
+    if request.method == "POST":
+        return jsonify(received=len(request.get_data()))
+    kb = max(1, min(int(request.args.get("kb", 100)), 2000))
+    return Response(bytes(kb * 1024), mimetype="application/octet-stream")
+
+
+@app.get("/config/calendar")
+def config_calendar():
+    """The calendar links (not local files) so the board can keep them in its own memory and read its agenda without the PC."""
+    links = [x for x in calendar_ics.sources() if x.lower().startswith(("http://", "https://", "webcal://"))]
+    return Response(";".join(links), mimetype="text/plain")
+
+
+@app.get("/config/mail")
+def config_mail():
+    """The first mailbox (host, user, app password; one per line) so the board can read its mail over IMAP by itself.
+    Only machines on the home network may ask, because this is a password."""
+    address = request.remote_addr or ""
+    private = address.startswith(("192.168.", "10.", "127.")) or address.startswith(tuple(f"172.{n}." for n in range(16, 32)))
+    accounts = mail_imap.accounts()
+    if not private or not accounts:
+        return Response("", mimetype="text/plain")
+    first = accounts[0]
+    return Response(first["host"] + chr(10) + first["user"] + chr(10) + first["password"] + chr(10), mimetype="text/plain")
 
 
 @app.get("/health")
@@ -956,6 +1094,31 @@ def screen_data(name):
         return jsonify(error=str(error)), 502
 
 
+WAKE_DATA = Path(__file__).with_name("wake_data") / "real"
+SAVE_WAKE_AUDIO = os.getenv("BUG_SAVE_WAKE_AUDIO", "1") == "1"
+MAX_SAVED_NEGATIVES = 1500
+
+
+def save_wake_clip(pcm, woke):
+    """Keeps the clips the board sends (16 kHz mono wav), sorted by whether Whisper heard the wake word.
+    They are the training data for the wake word that will run on the board. Stored only on this PC
+    (server/wake_data, ignored by git); BUG_SAVE_WAKE_AUDIO=0 turns it off."""
+    import wave
+
+    folder = WAKE_DATA / ("pos" if woke else "neg")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.wav"
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(SAMPLE_RATE)
+        out.writeframes(pcm)
+    if not woke:
+        old = sorted(folder.glob("*.wav"))
+        for stale in old[:-MAX_SAVED_NEGATIVES]:
+            stale.unlink(missing_ok=True)
+
+
 @app.post("/listen")
 def listen():
     """mode=wake: wait for 'Hola/Hey Bug'. mode=command: the next sentence is the command."""
@@ -963,7 +1126,7 @@ def listen():
     pcm = request.get_data()
     started = time.time()
 
-    heard = transcribe(pcm)
+    heard = transcribe(pcm, fast=(mode == "wake"))
     stt_seconds = time.time() - started
     if not heard:
         log.info("[%s] %.1fs of audio -> nothing heard (%.1fs)", mode, len(pcm) / 2 / SAMPLE_RATE, stt_seconds)
@@ -971,6 +1134,11 @@ def listen():
 
     woke, rest = parse_wake(heard)
     log.info("[%s] heard %r (%.1fs) wake=%s", mode, heard, stt_seconds, woke)
+    if SAVE_WAKE_AUDIO and mode == "wake":
+        try:
+            save_wake_clip(pcm, woke)
+        except OSError as error:
+            log.warning("Could not save the clip: %s", error)
 
     if mode == "wake":
         if not woke:
@@ -981,13 +1149,57 @@ def listen():
     else:
         command = rest if woke and rest else heard
 
+    if request.args.get("local") == "1":
+        # The board decides what to do with the words: it answers by itself when it can, and asks /ask when not
+        return respond("heard", command)
+    return answer_text(command, started)
+
+
+def answer_text(command, started):
     answer, screen = run_skill(command)
     audio = synthesize(answer)
     log.info("  command=%r -> %r screen=%s (total %.1fs)", command, answer, screen, time.time() - started)
     return respond("reply", command, audio, answer, screen)
 
 
+@app.post("/ask")
+def ask():
+    """The board understood the words but cannot answer them itself (the weather, the news, ...)."""
+    command = request.get_data().decode("utf-8", errors="replace").strip()
+    return answer_text(command, time.time())
+
+
+def announce_on_network():
+    """Lets the board find this PC by name, whatever address the router gives it (service _bugserver._tcp)."""
+    try:
+        import socket
+
+        from zeroconf import ServiceInfo, Zeroconf
+
+        addresses = sorted({a for a in socket.gethostbyname_ex(socket.gethostname())[2] if a.startswith(("192.168.", "10.", "172."))})
+        info = ServiceInfo("_bugserver._tcp.local.", "Bug._bugserver._tcp.local.", port=PORT,
+                           addresses=[socket.inet_aton(a) for a in addresses], properties={"path": "/"})
+        zeroconf = Zeroconf()
+        zeroconf.register_service(info)
+        log.info("Announced on the network as _bugserver._tcp at %s", ", ".join(addresses))
+        return zeroconf
+    except Exception as error:
+        log.warning("Could not announce on the network (%s): the board will use the saved address", error)
+        return None
+
+
 if __name__ == "__main__":
     model = load_model()
+    announcement = announce_on_network()
+    if TTS_ENGINE in ("auto", "piper") and piper_ready():
+        piper_pcm("Hola")  # the first sentence is slow; warm it up now
+        log.info("Local voice ready")
     log.info("Bug server ready on port %d. Voice: %s", PORT, VOICE)
-    app.run(host="0.0.0.0", port=PORT, threaded=True)
+    try:
+        # waitress sends answers in one piece. Flask's built-in server wrote them in small pieces, and the
+        # board then needed seconds to receive an 80 KB spoken answer (Nagle's delay against delayed ACKs).
+        from waitress import serve
+        log.info("Serving with waitress")
+        serve(app, host="0.0.0.0", port=PORT, threads=16, channel_timeout=300, ident="bug")
+    except ImportError:
+        app.run(host="0.0.0.0", port=PORT, threaded=True)

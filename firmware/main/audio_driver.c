@@ -21,7 +21,10 @@ static uint8_t current_volume = 100;
 #define I2S_PIN_DIN 10
 #define PIN_SPEAKER_AMP 46
 
-#define SAMPLE_RATE 16000
+// The codecs now run at 32 kHz so music has twice the bandwidth (up to 16 kHz instead of 8 kHz). The
+// microphone and Bug's voice still work at 16 kHz: reads are averaged down by two, writes are doubled.
+#define SAMPLE_RATE 16000  // what audio_read_samples / audio_write_samples carry
+#define HW_RATE 32000      // what the I2S bus and the codecs run at
 #define I2C_PORT I2C_NUM_0
 #define I2C_TIMEOUT pdMS_TO_TICKS(50)
 #define ES8311_ADDR 0x18  // Speaker output
@@ -140,7 +143,7 @@ esp_err_t audio_init(AudioDirection direction) {
                         TAG, "I2S channel create failed");
 
     i2s_std_config_t std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(HW_RATE),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = I2S_PIN_MCLK,
@@ -173,7 +176,7 @@ esp_err_t audio_init(AudioDirection direction) {
         ESP_LOGI(TAG, "✓ Microphone codec ready");
     }
 
-    ESP_LOGI(TAG, "✓ Audio driver ready (16kHz, 16-bit, mono)");
+    ESP_LOGI(TAG, "✓ Audio driver ready (bus 32 kHz; microphone and voice 16 kHz mono)");
     return ESP_OK;
 }
 
@@ -191,12 +194,13 @@ esp_err_t audio_read_samples(int16_t *buffer, size_t buffer_size, size_t *read_s
         return ESP_ERR_INVALID_ARG;
     }
 
+    // Every output sample (16 kHz) is the average of two bus frames (32 kHz) of two channels
     int16_t stereo[CHUNK_FRAMES * 2];
     size_t wanted = buffer_size / sizeof(int16_t);
     size_t done = 0;
 
     while (done < wanted) {
-        size_t frames = wanted - done;
+        size_t frames = (wanted - done) * 2;
         if (frames > CHUNK_FRAMES) frames = CHUNK_FRAMES;
 
         size_t got = 0;
@@ -206,22 +210,90 @@ esp_err_t audio_read_samples(int16_t *buffer, size_t buffer_size, size_t *read_s
             return ret;
         }
 
-        size_t got_frames = got / (2 * sizeof(int16_t));
-        for (size_t i = 0; i < got_frames; i++) {
-            buffer[done + i] = (int16_t)(((int32_t)stereo[i * 2] + stereo[i * 2 + 1]) / 2);
+        size_t got_pairs = got / (4 * sizeof(int16_t));  // two frames, two channels
+        for (size_t i = 0; i < got_pairs; i++) {
+            const int16_t *p = &stereo[i * 4];
+            buffer[done + i] = (int16_t)(((int32_t)p[0] + p[1] + p[2] + p[3]) / 4);
         }
-        done += got_frames;
+        done += got_pairs;
     }
 
     if (read_size) *read_size = done * sizeof(int16_t);
     return ESP_OK;
 }
 
+static esp_err_t write_stereo(const int16_t *stereo, size_t frames) {
+    size_t sent = 0;
+    while (sent < frames) {
+        size_t written = 0;
+        esp_err_t ret = i2s_channel_write(tx_handle, stereo + sent * 2, (frames - sent) * 2 * sizeof(int16_t), &written,
+                                          pdMS_TO_TICKS(500));
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write audio: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        sent += written / (2 * sizeof(int16_t));
+    }
+    return ESP_OK;
+}
+
+static volatile float out_level = 0;
+
+// How loud what we are playing is (0..1), for the voice meter. Reading it also lets it fall, so it returns to 0
+// when the sound stops.
+float audio_output_level(void) {
+    float value = out_level;
+    out_level = value * 0.55f;
+    return value;
+}
+
+static void note_output(const int16_t *buffer, size_t count) {
+    if (count == 0) return;
+    int64_t sum = 0;
+    size_t step = count > 256 ? count / 256 : 1;
+    size_t used = 0;
+    for (size_t i = 0; i < count; i += step, used++) sum += buffer[i] < 0 ? -buffer[i] : buffer[i];
+    float level = (float)sum / (float)used / 9000.0f;
+    out_level = level > 1.0f ? 1.0f : level;
+}
+
+// 16 kHz mono in; each sample becomes two bus frames (the first halfway between it and the previous one)
 esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size) {
     if (!tx_handle || !buffer) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    note_output(buffer, buffer_size / sizeof(int16_t));
+    static int16_t previous = 0;
+    int16_t stereo[CHUNK_FRAMES * 2];
+    size_t total = buffer_size / sizeof(int16_t);
+    size_t done = 0;
+
+    while (done < total) {
+        size_t samples = total - done;
+        if (samples > CHUNK_FRAMES / 2) samples = CHUNK_FRAMES / 2;
+        for (size_t i = 0; i < samples; i++) {
+            int16_t current = buffer[done + i];
+            int16_t middle = (int16_t)(((int32_t)previous + current) / 2);
+            stereo[i * 4] = middle;
+            stereo[i * 4 + 1] = middle;
+            stereo[i * 4 + 2] = current;
+            stereo[i * 4 + 3] = current;
+            previous = current;
+        }
+        ESP_RETURN_ON_ERROR(write_stereo(stereo, samples * 2), TAG, "write failed");
+        done += samples;
+    }
+    return ESP_OK;
+}
+
+// 32 kHz mono in (music): one sample per bus frame
+esp_err_t audio_write_music(const int16_t *buffer, size_t buffer_size) {
+    if (!tx_handle || !buffer) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    note_output(buffer, buffer_size / sizeof(int16_t));
     int16_t stereo[CHUNK_FRAMES * 2];
     size_t total = buffer_size / sizeof(int16_t);
     size_t done = 0;
@@ -233,16 +305,9 @@ esp_err_t audio_write_samples(const int16_t *buffer, size_t buffer_size) {
             stereo[i * 2] = buffer[done + i];
             stereo[i * 2 + 1] = buffer[done + i];
         }
-
-        size_t written = 0;
-        esp_err_t ret = i2s_channel_write(tx_handle, stereo, frames * 2 * sizeof(int16_t), &written, pdMS_TO_TICKS(500));
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to write audio: %s", esp_err_to_name(ret));
-            return ret;
-        }
-        done += written / (2 * sizeof(int16_t));
+        ESP_RETURN_ON_ERROR(write_stereo(stereo, frames), TAG, "write failed");
+        done += frames;
     }
-
     return ESP_OK;
 }
 

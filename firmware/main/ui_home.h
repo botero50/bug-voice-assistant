@@ -28,4 +28,13 @@ void ui_home_set_texts(const char *heard, const char *answer);
 // Microphone level from 0 to 1, pushed regularly while the waveform is showing.
 void ui_home_push_level(float level);
 
+// Touch on the middle of the screen: a tap listens, a long press mutes the microphone (also used by the Lumina look)
+void ui_home_ring_event(lv_event_t *e);
+
+// The Lumina Kinetic look (ui_home_lumina.c), the default. The cobot telemetry look is in ui_home.c.
+lv_obj_t *ui_home_lumina_build(ui_home_mode_t start_mode, const char *heard, const char *answer);
+void ui_home_lumina_set_mode(ui_home_mode_t mode);
+void ui_home_lumina_set_texts(const char *heard, const char *answer);
+void ui_home_lumina_push_level(float level);
+
 #endif // UI_HOME_H

@@ -15,6 +15,7 @@
 #include "audio_driver.h"
 #include "alarms.h"
 #include "assistant.h"
+void config_serial_start(void);
 #include "music_player.h"
 #include "ota_update.h"
 #include "esp_heap_caps.h"
@@ -154,13 +155,9 @@ static void show_assistant_state(assistant_state_t state) {
         break;
     case ASSISTANT_STATE_STANDBY:
         ui_home_set_mode(UI_HOME_STANDBY);
-        if (previous_state == ASSISTANT_STATE_SPEAKING) {
-            show_texts(heard, reply);  // keep the last exchange visible for a while
-            answer_expires_ms = now_ms() + ANSWER_LINGER_MS;
-        } else {
-            standby_prompt_active = true;
-            refresh_standby_prompt(true);
-        }
+        // As soon as the answer has been spoken the main screen comes back (the exchange stays in the history)
+        standby_prompt_active = true;
+        refresh_standby_prompt(true);
         break;
     case ASSISTANT_STATE_HEARING:
         ui_home_set_mode(UI_HOME_HEARING);
@@ -290,6 +287,7 @@ void app_main(void) {
 
     // Initialize power manager
     ESP_LOGI(TAG, "Initializing power management...");
+    power_manager_ui_boost(true);
     if (power_manager_init() != ESP_OK) {
         ESP_LOGW(TAG, "⚠ Power manager initialization failed");
     } else {
@@ -330,6 +328,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "Bug preview firmware started");
 
     if (audio_ready) {
+        config_serial_start();  // lets the installer page set the board up over USB
         assistant_start();
     }
 
@@ -347,6 +346,7 @@ void app_main(void) {
     int screen_level = 0;  // 0 on, 1 dimmed, 2 off
     bool voice_busy = false;  // Bug is hearing, thinking or speaking: keep the screen on
 
+    vTaskPrioritySet(NULL, 8);  // this loop draws the screen: it must not wait behind the background work
     while (1) {
         uint32_t now = now_ms();
 
@@ -395,7 +395,10 @@ void app_main(void) {
 
             if (now - last_level_ms >= 50) {
                 last_level_ms = now;
-                ui_home_push_level(assistant_audio_level());
+                {
+                    float mic = assistant_audio_level(), out = audio_output_level();
+                    ui_home_push_level(mic > out ? mic : out);
+                }
             }
 
             if (now - last_clock_ms >= 1000) {
@@ -436,6 +439,7 @@ void app_main(void) {
                         display_set_brightness(wanted_level == 1 ? (level < 3 ? 3 : level) : now_settings.brightness);
                     }
                     screen_level = wanted_level;
+                    power_manager_ui_boost(wanted_level == 0);  // full speed only while the screen is fully on
                 }
                 ui_nav_tick();
 

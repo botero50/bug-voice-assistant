@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumina Kinetic // Tactile Circular Smart Speaker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600&family=Newsreader:ital,opsz,wght@1,6..72,300;1,6..72,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-mono: 'Space Grotesk', monospace;
+      --font-editorial: 'Newsreader', serif;
+    }
+    * {
+      font-family: var(--font-body);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    body {
+      background-color: #0c0d11;
+      color: #edeef2;
+      overflow-x: hidden;
+    }
+
+    /* Luxury Acoustic Speaker Enclosure */
+    .bezel-chassis {
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.08),
+        0 0 0 8px #14161f,
+        0 0 0 14px #1c1f2b,
+        0 0 0 18px #090a0f,
+        0 30px 80px -15px rgba(0, 0, 0, 0.95),
+        0 0 60px -10px rgba(235, 148, 114, 0.12);
+    }
+
+    /* Precision circular anti-aliasing */
+    .circular-mask {
+      border-radius: 50%;
+      mask-image: radial-gradient(circle, black 99%, transparent 100%);
+      -webkit-mask-image: radial-gradient(circle, black 99%, transparent 100%);
+    }
+
+    /* Frosted glass tactile capsule */
+    .tactile-capsule {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Ambient watch dome reflection */
+    .acrylic-reflection {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .editorial-italic {
+      font-family: var(--font-editorial);
+      font-style: italic;
+    }
+    .mono-num {
+      font-family: var(--font-mono);
+      font-feature-settings: "tnum" 1;
+    }
+
+    /* Smooth theme transitions */
+    .theme-active {
+      background: rgba(255, 255, 255, 0.18) !important;
+      border-color: rgba(255, 255, 255, 0.4) !important;
+      color: #ffffff !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-amber-500 selection:text-black">
+
+  <!-- Header: Architectural minimal toolbar -->
+  <header class="w-full px-6 py-4 flex items-center justify-between border-b border-white/5 bg-[#0f1118]/80 backdrop-blur-md z-30">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-full border border-white/20 flex items-center justify-center bg-white/5">
+        <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+      </div>
+      <div>
+        <h1 class="text-sm font-medium tracking-tight text-white flex items-center gap-2">
+          Lumina Kinetic
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-300 font-normal mono-num">480×480 Waveshare</span>
+        </h1>
+        <p class="text-[11px] text-slate-400">Tactile Scandinavian Voice Companion</p>
+      </div>
+    </div>
+
+    <!-- Live mic & wake controls -->
+    <div class="flex items-center gap-2.5">
+      <button id="micBtn" class="px-3.5 py-1.5 rounded-full text-xs font-medium tracking-wide flex items-center gap-2 border transition-all duration-200 bg-white/5 border-white/10 hover:bg-white/10 text-slate-200">
+        <span id="micDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span id="micLabel">Enable Mic</span>
+      </button>
+
+      <button id="wakeBtn" class="px-4 py-1.5 rounded-full text-xs font-medium bg-white text-black hover:bg-slate-200 transition-all shadow-sm active:scale-95">
+        "Hey Lumina"
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Viewport with circular 480x480 active screen -->
+  <main class="flex-1 flex flex-col lg:flex-row items-center justify-center p-4 sm:p-8 gap-8 sm:gap-12 max-w-6xl mx-auto w-full">
+
+    <!-- Speaker Physical Housing -->
+    <div class="flex flex-col items-center">
+      <div class="relative p-2 rounded-full bg-gradient-to-b from-[#1b1e2a] to-[#0a0c12]">
+        
+        <!-- Physical Round Display Housing (480x480 active surface) -->
+        <div id="speakerOrb" class="relative w-[340px] h-[340px] sm:w-[420px] sm:h-[420px] rounded-full bezel-chassis overflow-hidden bg-[#0a0c11] cursor-pointer group">
+
+          <!-- 480x480 High Precision Kinetic Canvas -->
+          <canvas id="kineticCanvas" width="480" height="480" class="w-full h-full block circular-mask"></canvas>
+
+          <!-- Tactile Glass Reflection Overlay -->
+          <div class="acrylic-reflection absolute inset-0 circular-mask"></div>
+
+          <!-- Tactile Rotary Rim for Volume Dial (SVG) -->
+          <svg class="absolute inset-0 w-full h-full pointer-events-none rotate-[-90deg]" viewBox="0 0 480 480">
+            <circle cx="240" cy="240" r="236" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="6"/>
+            <circle id="volRing" cx="240" cy="240" r="236" fill="none" stroke="rgba(255, 255, 255, 0.45)" stroke-width="6" stroke-linecap="round" stroke-dasharray="1483" stroke-dashoffset="593"/>
+          </svg>
+
+          <!-- Safe concentric layout overlay (Safe Radius: 170px) -->
+          <div class="absolute inset-0 circular-mask flex flex-col justify-between items-center py-10 px-8 pointer-events-none text-center">
+
+            <!-- Top Pill: Acoustic Status / Atmospheric Micro Card -->
+            <div id="topWidget" class="tactile-capsule px-3.5 py-1.5 rounded-full flex items-center gap-2 transition-all duration-300">
+              <span id="stateDot" class="w-2 h-2 rounded-full bg-amber-400 transition-colors duration-300"></span>
+              <span id="stateLabel" class="text-[11px] font-medium tracking-wide uppercase text-slate-200">Listening</span>
+              <span class="text-white/20 text-[10px]">•</span>
+              <div class="flex items-center gap-1.5 text-[11px] text-slate-300">
+                <span class="mono-num">21°C</span>
+                <span class="text-[10px] text-slate-400 editorial-italic">Misty Pine</span>
+              </div>
+            </div>
+
+            <!-- Central Content: Architectural Clock & Floating Transcript -->
+            <div class="flex flex-col items-center justify-center max-w-[280px] z-10">
+              
+              <!-- Ambient Clock Face -->
+              <div id="clockGroup" class="flex flex-col items-center transition-all duration-500">
+                <div class="flex items-baseline gap-1">
+                  <span id="clockHours" class="text-5xl sm:text-6xl font-light tracking-tight text-white mono-num">08</span>
+                  <span class="text-3xl font-extralight text-white/40">:</span>
+                  <span id="clockMins" class="text-5xl sm:text-6xl font-light tracking-tight text-white mono-num">45</span>
+                </div>
+                <span id="clockDate" class="text-[11px] tracking-widest uppercase text-slate-400 font-medium mt-1">Sun • 08 Nov</span>
+              </div>
+
+              <!-- Organic Dialogue Bubble (Pop-up on hearing/speaking) -->
+              <div id="dialogueCard" class="mt-2 px-4 py-2 rounded-2xl tactile-capsule border border-white/15 max-w-[260px] shadow-2xl opacity-0 scale-95 transition-all duration-300">
+                <p id="dialogueQuote" class="text-[11px] font-normal text-slate-100 leading-snug">
+                  "Playing Miles Davis — Blue in Green"
+                </p>
+                <div id="audioWaveBars" class="mt-1.5 flex items-center justify-center gap-1">
+                  <div class="w-1 h-3 bg-amber-400/80 rounded-full animate-pulse"></div>
+                  <div class="w-1 h-5 bg-amber-400/80 rounded-full animate-pulse" style="animation-delay: 150ms;"></div>
+                  <div class="w-1 h-2 bg-amber-400/80 rounded-full animate-pulse" style="animation-delay: 300ms;"></div>
+                  <div class="w-1 h-4 bg-amber-400/80 rounded-full animate-pulse" style="animation-delay: 450ms;"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bottom Sub-Label -->
+            <div id="bottomWidget" class="flex flex-col items-center">
+              <span id="footerTip" class="text-[10px] text-slate-400 tracking-wider font-normal uppercase">
+                Tap display to toggle cycle
+              </span>
+            </div>
+
+          </div>
+
+          <!-- Touch ripple visual flash -->
+          <div id="tapFeedback" class="absolute inset-0 rounded-full bg-white/10 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+        </div>
+      </div>
+
+      <div class="mt-4 flex items-center gap-3 text-xs text-slate-400 mono-num">
+        <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> 480×480 Safe-Zone Active</span>
+        <span>•</span>
+        <span>Drag circular edge for Volume</span>
+      </div>
+    </div>
+
+    <!-- Right Column: Tactile Customization, Interaction Cycle & Firmware Specs -->
+    <div class="flex-1 max-w-md w-full flex flex-col gap-4">
+
+      <!-- Aesthetic Materials Selector -->
+      <div class="p-5 rounded-2xl bg-[#12141d] border border-white/10 shadow-xl">
+        <h2 class="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-3 flex items-center justify-between">
+          <span>Scandinavian CMF Aesthetics</span>
+          <span class="text-[10px] text-amber-400/90 font-mono">3 Palette Modes</span>
+        </h2>
+
+        <div class="grid grid-cols-1 gap-2.5">
+          
+          <!-- Theme 1: Ceramic & Ochre -->
+          <button data-theme="ceramic" class="theme-pill theme-active w-full flex items-center gap-3.5 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] transition-all text-left">
+            <div class="w-10 h-10 rounded-full bg-[#1c1613] border border-[#ea7a54]/40 flex items-center justify-center text-[#ea7a54] shrink-0 shadow-sm">
+              <div class="w-4 h-4 rounded-full bg-gradient-to-tr from-[#ea7a54] to-[#ffb685]"></div>
+            </div>
+            <div class="flex-1">
+              <div class="text-xs font-medium text-white flex items-center justify-between">
+                <span>Ceramic & Warm Ochre</span>
+                <span class="text-[10px] text-amber-300 font-mono">B&O Style</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                Matte basalt stone base, warm clay terracotta petals, and soft amber acoustic breathing.
+              </p>
+            </div>
+          </button>
+
+          <!-- Theme 2: Nordic Forest -->
+          <button data-theme="nordic" class="theme-pill w-full flex items-center gap-3.5 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] transition-all text-left">
+            <div class="w-10 h-10 rounded-full bg-[#0e1714] border border-[#34d399]/30 flex items-center justify-center text-[#34d399] shrink-0 shadow-sm">
+              <div class="w-4 h-4 rounded-full bg-gradient-to-tr from-[#059669] to-[#6ee7b7]"></div>
+            </div>
+            <div class="flex-1">
+              <div class="text-xs font-medium text-white flex items-center justify-between">
+                <span>Nordic Forest</span>
+                <span class="text-[10px] text-emerald-400 font-mono">Calm Tech</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                Deep nocturnal pine greens, muted eucalyptus sage droplets, and dewy fluid resonance.
+              </p>
+            </div>
+          </button>
+
+          <!-- Theme 3: E-Ink Tactile -->
+          <button data-theme="eink" class="theme-pill w-full flex items-center gap-3.5 p-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.08] transition-all text-left">
+            <div class="w-10 h-10 rounded-full bg-[#101010] border border-white/30 flex items-center justify-center text-white shrink-0 shadow-sm">
+              <div class="w-4 h-4 rounded-full bg-white flex items-center justify-center">
+                <div class="w-1.5 h-1.5 rounded-full bg-[#ff3b30]"></div>
+              </div>
+            </div>
+            <div class="flex-1">
+              <div class="text-xs font-medium text-white flex items-center justify-between">
+                <span>E-Ink Tactile Mono</span>
+                <span class="text-[10px] text-rose-400 font-mono">Teenage Eng.</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                High-contrast geometric monochrome, vermilion red cue dot, and Bauhaus typographic balance.
+              </p>
+            </div>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Voice Interaction State Controls -->
+      <div class="p-5 rounded-2xl bg-[#12141d] border border-white/10 shadow-xl">
+        <h2 class="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-3 flex items-center justify-between">
+          <span>Acoustic Voice State</span>
+          <span class="text-[10px] text-slate-400 font-mono">Simulated Cycle</span>
+        </h2>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button data-state="standby" class="state-tab px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-white/30 transition-all">
+            <span class="text-xs font-medium text-slate-300 block">Standby</span>
+            <span class="text-[10px] text-slate-500">Subtle rhythmic rest</span>
+          </button>
+
+          <button data-state="listening" class="state-tab px-3 py-2 rounded-xl border border-amber-400 bg-amber-400/10 text-left transition-all">
+            <span class="text-xs font-medium text-amber-300 block">Listening</span>
+            <span class="text-[10px] text-amber-300/80">Diaphragm reactive</span>
+          </button>
+
+          <button data-state="thinking" class="state-tab px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-white/30 transition-all">
+            <span class="text-xs font-medium text-slate-300 block">Thinking</span>
+            <span class="text-[10px] text-slate-500">Harmonic kinetic orbit</span>
+          </button>
+
+          <button data-state="speaking" class="state-tab px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-white/30 transition-all">
+            <span class="text-xs font-medium text-slate-300 block">Speaking</span>
+            <span class="text-[10px] text-slate-500">Acoustic wave ripples</span>
+          </button>
+        </div>
+
+        <!-- Real-world simulation scripts -->
+        <div class="mt-3.5 pt-3 border-t border-white/5 flex gap-2">
+          <button id="simWeather" class="flex-1 py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-slate-300 transition-all text-center">
+            Simulate Weather Ask
+          </button>
+          <button id="simMusic" class="flex-1 py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-slate-300 transition-all text-center">
+            Simulate Play Music
+          </button>
+        </div>
+      </div>
+
+      <!-- Embedded Specs drawer toggle -->
+      <button id="toggleSpecs" class="w-full py-2.5 px-4 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] text-xs text-slate-400 flex items-center justify-between transition-all">
+        <span class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          ESP32-S3 / LVGL v9 Blueprint
+        </span>
+        <span class="text-[10px] mono-num">&lt;400KB PSRAM</span>
+      </button>
+
+    </div>
+  </main>
+
+  <!-- ESP32 Hardware implementation modal -->
+  <div id="specsModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#12141e] border border-white/15 rounded-2xl max-w-lg w-full p-6 text-slate-200 shadow-2xl relative max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <div>
+          <h3 class="text-sm font-semibold text-white">Waveshare ESP32-S3 Round Display Blueprint</h3>
+          <p class="text-[11px] text-slate-400">Hardware & Firmware Implementation Notes</p>
+        </div>
+        <button id="closeSpecs" class="text-slate-400 hover:text-white text-lg">&times;</button>
+      </div>
+
+      <div class="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[11px] font-semibold text-amber-300 uppercase tracking-wide">Display Parameters</div>
+          <p class="mt-1 text-[11px] text-slate-400">
+            • Display IC: <strong>ST7701S / NV3041A</strong> (3-wire SPI + 18-bit RGB interface)<br>
+            • Resolution: <strong>480×480 Circular</strong> (Active Radius = 240px)<br>
+            • Touch Controller: <strong>CST816S</strong> I2C capacitive multi-touch
+          </p>
+        </div>
+
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[11px] font-semibold text-emerald-300 uppercase tracking-wide">LVGL v9 / LovyanGFX Vector Primitives</div>
+          <p class="mt-1 text-[11px] text-slate-400">
+            The kinetic diaphragm consists of 16 radial pill droplets. Instead of costly framebuffers or blur filters, each petal is calculated with polar coordinates and drawn using LovyanGFX:
+          </p>
+          <pre class="mt-2 p-2.5 rounded bg-black/60 text-[10px] font-mono text-amber-200 overflow-x-auto">
+// LovyanGFX DMA Sprite rendering (16 Petals)
+float step = (2.0f * PI) / 16;
+for(int i = 0; i &lt; 16; i++) {
+  float theta = i * step + rotation;
+  float r_inner = 90.0f + audio_envelope * 25.0f;
+  float r_outer = r_inner + 18.0f + petal_stretch[i];
+  lcd.fillSmoothCircle(cx + cos(theta)*r_outer, cy + sin(theta)*r_outer, 5, color);
+}</pre>
+        </div>
+
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[11px] font-semibold text-sky-300 uppercase tracking-wide">Microphone & Audio I2S Routing</div>
+          <p class="mt-1 text-[11px] text-slate-400">
+            Onboard dual I2S MEMS microphones (MSM261S4030H0R) sample 16kHz audio directly to an ESP32 DMA buffer, feeding a fast 32-point integer FFT to drive the radial petal amplitudes.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="w-full px-6 py-3 border-t border-white/5 bg-[#0e1017]/80 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 z-10">
+    <div class="flex items-center gap-2">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+      <span>Lumina Kinetic Engine • Pure Canvas Vector Primitives</span>
+    </div>
+    <div class="text-slate-400 mt-1 sm:mt-0 mono-num">Target Hardware: Waveshare 1.28" / 1.69" / 2.1" ESP32-S3 Round Touch</div>
+  </footer>
+
+  <script>
+    /* =================================================================
+     * STATE & AESTHETIC PALETTES
+     * ================================================================= */
+    const State = {
+      STANDBY: 'standby',
+      LISTENING: 'listening',
+      THINKING: 'thinking',
+      SPEAKING: 'speaking'
+    };
+
+    let currentState = State.LISTENING;
+    let currentTheme = 'ceramic';
+    let volume = 0.60; // 0.0 to 1.0
+
+    // Theme Palettes
+    const Palettes = {
+      ceramic: {
+        bg: '#0c0c0e',
+        coreRim: 'rgba(234, 122, 84, 0.15)',
+        corePetal: '#ea7a54',
+        accentPetal: '#f9a07a',
+        rippleWave: 'rgba(234, 122, 84, 0.25)',
+        glow: 'rgba(234, 122, 84, 0.1)',
+        highlightDot: '#ffb396',
+        centerAura: 'rgba(234, 122, 84, 0.07)'
+      },
+      nordic: {
+        bg: '#080d0b',
+        coreRim: 'rgba(52, 211, 153, 0.15)',
+        corePetal: '#10b981',
+        accentPetal: '#6ee7b7',
+        rippleWave: 'rgba(52, 211, 153, 0.25)',
+        glow: 'rgba(52, 211, 153, 0.1)',
+        highlightDot: '#a7f3d0',
+        centerAura: 'rgba(16, 185, 129, 0.07)'
+      },
+      eink: {
+        bg: '#070708',
+        coreRim: 'rgba(255, 255, 255, 0.12)',
+        corePetal: '#ffffff',
+        accentPetal: '#d4d4d8',
+        rippleWave: 'rgba(255, 255, 255, 0.22)',
+        glow: 'rgba(255, 255, 255, 0.04)',
+        highlightDot: '#ff3b30', // vermilion red Bauhaus accent
+        centerAura: 'rgba(255, 255, 255, 0.03)'
+      }
+    };
+
+    // Kinetic Diaphragm Petal Nodes (16 radial droplets)
+    const PETAL_COUNT = 16;
+    const petals = Array.from({ length: PETAL_COUNT }, (_, i) => ({
+      angle: (i / PETAL_COUNT) * Math.PI * 2,
+      stretch: 0,
+      velocity: 0
+    }));
+
+    // Audio & Frequency Engine
+    let isLiveMic = false;
+    let audioCtx = null;
+    let analyser = null;
+    let micStream = null;
+    let audioData = null;
+    let voiceEnvelope = 0.2;
+    let animTimer = 0;
+    let thinkingSpin = 0;
+
+    // Canvas References
+    const canvas = document.getElementById('kineticCanvas');
+    const ctx = canvas.getContext('2d');
+    const CX = 240;
+    const CY = 240;
+
+    // DOM Elements
+    const clockHours = document.getElementById('clockHours');
+    const clockMins = document.getElementById('clockMins');
+    const clockDate = document.getElementById('clockDate');
+    const stateDot = document.getElementById('stateDot');
+    const stateLabel = document.getElementById('stateLabel');
+    const dialogueCard = document.getElementById('dialogueCard');
+    const dialogueQuote = document.getElementById('dialogueQuote');
+    const footerTip = document.getElementById('footerTip');
+    const volRing = document.getElementById('volRing');
+    const tapFeedback = document.getElementById('tapFeedback');
+    const clockGroup = document.getElementById('clockGroup');
+
+    // Update Digital Clock
+    function updateClock() {
+      const now = new Date();
+      clockHours.textContent = String(now.getHours()).padStart(2, '0');
+      clockMins.textContent = String(now.getMinutes()).padStart(2, '0');
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      clockDate.textContent = `${days[now.getDay()]} • ${String(now.getDate()).padStart(2, '0')} ${months[now.getMonth()]}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Update Rotary Volume Arc Visual
+    function updateVolumeRing() {
+      const circumference = 2 * Math.PI * 236; // 1482.8
+      const offset = circumference * (1 - volume);
+      volRing.style.strokeDashoffset = offset;
+    }
+    updateVolumeRing();
+
+    /* =================================================================
+     * REAL LIVE MICROPHONE VIA WEB AUDIO API
+     * ================================================================= */
+    async function toggleMicrophone() {
+      const btn = document.getElementById('micBtn');
+      const label = document.getElementById('micLabel');
+      const dot = document.getElementById('micDot');
+
+      if (isLiveMic) {
+        if (micStream) micStream.getTracks().forEach(t => t.stop());
+        if (audioCtx) audioCtx.close();
+        isLiveMic = false;
+        label.textContent = "Enable Mic";
+        btn.className = "px-3.5 py-1.5 rounded-full text-xs font-medium tracking-wide flex items-center gap-2 border transition-all duration-200 bg-white/5 border-white/10 hover:bg-white/10 text-slate-200";
+        dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.75;
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        micStream = stream;
+        audioData = new Uint8Array(analyser.frequencyBinCount);
+        isLiveMic = true;
+
+        label.textContent = "Mic Live";
+        btn.className = "px-3.5 py-1.5 rounded-full text-xs font-medium tracking-wide flex items-center gap-2 border transition-all duration-200 bg-emerald-500/20 border-emerald-400 text-emerald-300";
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
+        setState(State.LISTENING);
+      } catch (err) {
+        console.warn("Microphone not available, using synthetic voice simulation.", err);
+        isLiveMic = false;
+      }
+    }
+    document.getElementById('micBtn').addEventListener('click', toggleMicrophone);
+
+    /* =================================================================
+     * AUDIO ENERGY & FREQUENCY SAMPLING
+     * ================================================================= */
+    function sampleAudio() {
+      let target = 0;
+      if (isLiveMic && analyser && audioData) {
+        analyser.getByteFrequencyData(audioData);
+        let sum = 0;
+        // Average speech frequency range (bins 2 through 14)
+        for (let i = 2; i < 15; i++) {
+          sum += audioData[i];
+          // Distribute frequency bands across kinetic petals
+          if (i < PETAL_COUNT) {
+            petals[i].stretch += ((audioData[i] / 255) * 35 - petals[i].stretch) * 0.3;
+          }
+        }
+        target = (sum / 13) / 255 * 2.2;
+      } else {
+        animTimer += 0.04;
+        if (currentState === State.LISTENING) {
+          target = (Math.sin(animTimer * 3.2) * 0.45 + Math.cos(animTimer * 1.8) * 0.25 + 0.6) * 1.1;
+          for (let i = 0; i < PETAL_COUNT; i++) {
+            const harmonic = Math.sin(animTimer * 4 + i * 0.6) * 16 * target;
+            petals[i].stretch += (Math.max(0, harmonic) - petals[i].stretch) * 0.25;
+          }
+        } else if (currentState === State.SPEAKING) {
+          target = (Math.abs(Math.sin(animTimer * 4.0)) * 0.6 + 0.3) * 1.25;
+          for (let i = 0; i < PETAL_COUNT; i++) {
+            const rhythmic = Math.sin(animTimer * 5.5 + i * 0.4) * 20 * target;
+            petals[i].stretch += (Math.max(0, rhythmic) - petals[i].stretch) * 0.3;
+          }
+        } else if (currentState === State.THINKING) {
+          target = 0.35 + Math.sin(animTimer * 6.0) * 0.2;
+          thinkingSpin += 0.035;
+        } else {
+          // Standby soft breathing rhythm
+          target = 0.12 + Math.sin(animTimer * 1.3) * 0.06;
+          for (let i = 0; i < PETAL_COUNT; i++) {
+            petals[i].stretch += (0 - petals[i].stretch) * 0.15;
+          }
+        }
+      }
+      voiceEnvelope += (target - voiceEnvelope) * 0.2;
+      return Math.max(0.08, voiceEnvelope);
+    }
+
+    /* =================================================================
+     * LUMINA KINETIC DIAPHRAGM RENDERER
+     * ================================================================= */
+    function renderKineticCanvas() {
+      requestAnimationFrame(renderKineticCanvas);
+      const energy = sampleAudio();
+      const p = Palettes[currentTheme];
+
+      // Pure solid canvas wipe
+      ctx.fillStyle = p.bg;
+      ctx.fillRect(0, 0, 480, 480);
+
+      // Safe circular clipping (480x480 active panel)
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(CX, CY, 239, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 1. Central Ambient Atmospheric Glow
+      const auraRadius = 140 + energy * 40;
+      const auraGrad = ctx.createRadialGradient(CX, CY, 20, CX, CY, auraRadius);
+      auraGrad.addColorStop(0, p.centerAura);
+      auraGrad.addColorStop(0.7, p.glow);
+      auraGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(CX, CY, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. Base Concentric Acoustic Reference Ring
+      ctx.beginPath();
+      ctx.arc(CX, CY, 172, 0, Math.PI * 2);
+      ctx.strokeStyle = p.coreRim;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Outer micro tick marks around the safe boundary
+      const ticks = 48;
+      for (let t = 0; t < ticks; t++) {
+        const theta = (t / ticks) * Math.PI * 2;
+        const r1 = 172;
+        const r2 = (t % 4 === 0) ? 179 : 175;
+        ctx.beginPath();
+        ctx.moveTo(CX + Math.cos(theta) * r1, CY + Math.sin(theta) * r1);
+        ctx.lineTo(CX + Math.cos(theta) * r2, CY + Math.sin(theta) * r2);
+        ctx.strokeStyle = (t % 4 === 0) ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      // 3. Acoustic Soundwave Radiations (When Speaking or Listening)
+      if (currentState === State.SPEAKING || currentState === State.LISTENING) {
+        const waveCount = 2;
+        for (let w = 1; w <= waveCount; w++) {
+          const waveR = 100 + ((animTimer * 25 + w * 45) % 80) + (energy * 20);
+          const alpha = Math.max(0, 0.4 - (waveR - 100) / 80);
+          ctx.beginPath();
+          ctx.arc(CX, CY, waveR, 0, Math.PI * 2);
+          ctx.strokeStyle = p.rippleWave.replace('0.25', alpha.toFixed(2));
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      // 4. Kinetic Diaphragm: 16 Radial Elastic Droplets / Pills
+      const baseRadius = 110 + (energy * 15);
+      const rotationBase = (currentState === State.THINKING) ? thinkingSpin : (animTimer * 0.15);
+
+      for (let i = 0; i < PETAL_COUNT; i++) {
+        const theta = (i / PETAL_COUNT) * Math.PI * 2 + rotationBase;
+        const stretchAmount = petals[i].stretch;
+        
+        // Inner and outer points of each elastic droplet
+        const innerR = baseRadius - (currentState === State.THINKING ? Math.sin(animTimer * 3 + i) * 12 : 0);
+        const outerR = innerR + 18 + stretchAmount;
+
+        const x1 = CX + Math.cos(theta) * innerR;
+        const y1 = CY + Math.sin(theta) * innerR;
+        const x2 = CX + Math.cos(theta) * outerR;
+        const y2 = CY + Math.sin(theta) * outerR;
+
+        // Draw rounded tactile pill
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineWidth = 6.5;
+        ctx.lineCap = 'round';
+
+        // Alternate petal coloring for visual rhythm
+        if (i % 2 === 0) {
+          ctx.strokeStyle = p.corePetal;
+        } else {
+          ctx.strokeStyle = p.accentPetal;
+        }
+        ctx.stroke();
+
+        // Bauhaus vermilion accent dot or highlight node
+        if (i === 0) {
+          ctx.beginPath();
+          ctx.arc(x2, y2, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = p.highlightDot;
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+    requestAnimationFrame(renderKineticCanvas);
+
+    /* =================================================================
+     * STATE & THEME MANAGEMENT
+     * ================================================================= */
+    function setTheme(theme) {
+      currentTheme = theme;
+      document.querySelectorAll('.theme-pill').forEach(btn => {
+        if (btn.getAttribute('data-theme') === theme) {
+          btn.classList.add('theme-active');
+        } else {
+          btn.classList.remove('theme-active');
+        }
+      });
+      // Synchronize indicator dot color
+      const p = Palettes[theme];
+      stateDot.style.backgroundColor = p.corePetal;
+    }
+
+    document.querySelectorAll('.theme-pill').forEach(btn => {
+      btn.addEventListener('click', () => setTheme(btn.getAttribute('data-theme')));
+    });
+
+    function setState(state) {
+      currentState = state;
+
+      // Update state buttons
+      document.querySelectorAll('.state-tab').forEach(btn => {
+        const isMatch = btn.getAttribute('data-state') === state;
+        if (isMatch) {
+          btn.className = "state-tab px-3 py-2 rounded-xl border border-amber-400 bg-amber-400/10 text-left transition-all";
+          btn.querySelector('span').className = "text-xs font-medium text-amber-300 block";
+        } else {
+          btn.className = "state-tab px-3 py-2 rounded-xl border border-white/10 bg-white/[0.02] text-left hover:border-white/30 transition-all";
+          btn.querySelector('span').className = "text-xs font-medium text-slate-300 block";
+        }
+      });
+
+      // Contextual layout updates
+      if (state === State.STANDBY) {
+        stateLabel.textContent = "Standby";
+        dialogueCard.classList.add('opacity-0', 'scale-95');
+        clockGroup.classList.remove('scale-90', 'opacity-60');
+        footerTip.textContent = 'Tap or say "Hey Lumina"';
+      } else if (state === State.LISTENING) {
+        stateLabel.textContent = "Hearing You";
+        dialogueCard.classList.remove('opacity-0', 'scale-95');
+        dialogueQuote.textContent = '"Set a timer for 15 minutes"';
+        clockGroup.classList.add('scale-90', 'opacity-60');
+        footerTip.textContent = "Listening to voice input...";
+      } else if (state === State.THINKING) {
+        stateLabel.textContent = "Processing";
+        dialogueCard.classList.remove('opacity-0', 'scale-95');
+        dialogueQuote.textContent = "Thinking...";
+        footerTip.textContent = "Synthesizing answer...";
+      } else if (state === State.SPEAKING) {
+        stateLabel.textContent = "Responding";
+        dialogueCard.classList.remove('opacity-0', 'scale-95');
+        dialogueQuote.textContent = '"Timer set for 15 minutes."';
+        clockGroup.classList.add('scale-90', 'opacity-60');
+        footerTip.textContent = "Acoustic playback active";
+      }
+
+      // Haptic flash simulation
+      tapFeedback.style.opacity = '1';
+      setTimeout(() => { tapFeedback.style.opacity = '0'; }, 200);
+    }
+
+    document.querySelectorAll('.state-tab').forEach(btn => {
+      btn.addEventListener('click', () => setState(btn.getAttribute('data-state')));
+    });
+
+    // Tap screen to cycle voice state
+    document.getElementById('speakerOrb').addEventListener('click', () => {
+      const order = [State.STANDBY, State.LISTENING, State.THINKING, State.SPEAKING];
+      const next = (order.indexOf(currentState) + 1) % order.length;
+      setState(order[next]);
+    });
+
+    // Wake word button
+    document.getElementById('wakeBtn').addEventListener('click', () => {
+      setState(State.LISTENING);
+      voiceEnvelope = 1.9;
+    });
+
+    // Simulation triggers
+    document.getElementById('simWeather').addEventListener('click', () => {
+      setState(State.LISTENING);
+      dialogueQuote.textContent = '"What’s the weather in Kyoto?"';
+      setTimeout(() => {
+        setState(State.THINKING);
+        setTimeout(() => {
+          setState(State.SPEAKING);
+          dialogueQuote.textContent = '"Kyoto is 18°C with gentle rain."';
+        }, 1200);
+      }, 1500);
+    });
+
+    document.getElementById('simMusic').addEventListener('click', () => {
+      setState(State.LISTENING);
+      dialogueQuote.textContent = '"Play Miles Davis"';
+      setTimeout(() => {
+        setState(State.SPEAKING);
+        dialogueQuote.textContent = '"Now playing: Blue in Green"';
+      }, 1400);
+    });
+
+    // Hardware Specs Modal
+    const specsModal = document.getElementById('specsModal');
+    document.getElementById('toggleSpecs').addEventListener('click', () => specsModal.classList.remove('hidden'));
+    document.getElementById('closeSpecs').addEventListener('click', () => specsModal.classList.add('hidden'));
+
+    // Rotary Edge Volume Drag Interaction
+    let isDragging = false;
+    const orb = document.getElementById('speakerOrb');
+
+    function handleRimTouch(e) {
+      const rect = orb.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const x = clientX - (rect.left + rect.width / 2);
+      const y = clientY - (rect.top + rect.height / 2);
+
+      let angle = Math.atan2(y, x) + Math.PI / 2;
+      if (angle < 0) angle += Math.PI * 2;
+      volume = Math.max(0.05, Math.min(1.0, angle / (Math.PI * 2)));
+      updateVolumeRing();
+      footerTip.textContent = `Volume: ${Math.round(volume * 100)}%`;
+    }
+
+    orb.addEventListener('mousedown', (e) => {
+      const rect = orb.getBoundingClientRect();
+      const dist = Math.hypot(e.clientX - (rect.left + rect.width / 2), e.clientY - (rect.top + rect.height / 2));
+      if (dist > rect.width * 0.36) {
+        isDragging = true;
+        handleRimTouch(e);
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) handleRimTouch(e);
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+  </script>
+</body>
+</html>

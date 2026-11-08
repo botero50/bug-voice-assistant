@@ -6,6 +6,8 @@
 
 static const char *TAG = "POWER_MGR";
 static PowerMode current_mode = POWER_MODE_NORMAL;
+static esp_pm_lock_handle_t ui_lock = NULL;
+static bool ui_boosted = false;
 static uint32_t idle_timeout_counter = 0;
 static uint32_t current_max_freq_mhz = 240;
 
@@ -102,4 +104,17 @@ void power_manager_enable_modem_sleep(bool enable) {
 
 void power_manager_idle_timeout_reset(void) {
     idle_timeout_counter = 0;
+}
+
+// Holds the CPU at its top speed while the screen is on and something is going on. The power manager lowers the CPU to 80 MHz
+// whenever nothing holds it up, and the screen is drawn in software, so without this animations ran at a few frames a second.
+void power_manager_ui_boost(bool on) {
+    if (!ui_lock && esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "ui", &ui_lock) != ESP_OK) return;
+    if (on && !ui_boosted) {
+        esp_pm_lock_acquire(ui_lock);
+        ui_boosted = true;
+    } else if (!on && ui_boosted) {
+        esp_pm_lock_release(ui_lock);
+        ui_boosted = false;
+    }
 }

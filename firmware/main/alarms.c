@@ -48,7 +48,52 @@ void alarms_init(void) {
     ESP_LOGI(TAG, "%d alarms saved on the board", count);
 }
 
-void alarms_add(uint32_t id, time_t at, const char *label, uint32_t repeat) {
+uint32_t alarms_new_id(void) {
+    uint32_t highest = 1000;  // the PC's ids are small numbers; these never collide with them
+    for (int i = 0; i < MAX_ALARMS; i++) {
+        if (entries[i].at && entries[i].id > highest) highest = entries[i].id;
+    }
+    return highest + 1;
+}
+
+int alarms_cancel_kind(int kind) {
+    int removed = 0;
+    for (int i = 0; i < MAX_ALARMS; i++) {
+        if (entries[i].at && (kind == 0 || entries[i].kind == kind)) {
+            entries[i].at = 0;
+            removed++;
+        }
+    }
+    if (removed) save();
+    return removed;
+}
+
+int alarms_count(void) {
+    int count = 0;
+    for (int i = 0; i < MAX_ALARMS; i++) {
+        if (entries[i].at) count++;
+    }
+    return count;
+}
+
+bool alarms_get_sorted(int index, alarm_entry_t *out) {
+    bool used[MAX_ALARMS] = {false};
+    for (int rank = 0; rank <= index; rank++) {
+        int best = -1;
+        for (int i = 0; i < MAX_ALARMS; i++) {
+            if (entries[i].at && !used[i] && (best < 0 || entries[i].at < entries[best].at)) best = i;
+        }
+        if (best < 0) return false;
+        used[best] = true;
+        if (rank == index) {
+            *out = entries[best];
+            return true;
+        }
+    }
+    return false;
+}
+
+void alarms_add(uint32_t id, time_t at, const char *label, uint32_t repeat, uint8_t kind) {
     int slot = -1;
     for (int i = 0; i < MAX_ALARMS; i++) {
         if (entries[i].at && entries[i].id == id) {
@@ -66,6 +111,7 @@ void alarms_add(uint32_t id, time_t at, const char *label, uint32_t repeat) {
     entries[slot].id = id;
     entries[slot].at = at;
     entries[slot].repeat = repeat;
+    entries[slot].kind = kind;
     strlcpy(entries[slot].label, label, sizeof(entries[slot].label));
     save();
     ESP_LOGI(TAG, "Saved #%u \"%s\" for %lld (in %lld s)", (unsigned)id, label, (long long)at,

@@ -15,7 +15,7 @@ MIRRORS = ["all.api.radio-browser.info", "de1.api.radio-browser.info", "de2.api.
            "fi1.api.radio-browser.info", "nl1.api.radio-browser.info"]
 _working_host = MIRRORS[0]
 USER_AGENT = "BugVoiceAssistant/0.1"
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 32000  # music: twice the voice rate
 PLAYABLE_CODECS = {"MP3", "AAC", "AAC+", "OGG", "FLAC"}
 
 # What people say -> the tag used in the directory

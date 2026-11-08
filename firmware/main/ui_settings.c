@@ -8,6 +8,7 @@
 #include "ui_config.h"
 #include "ui_nav.h"
 #include "ui_text_entry.h"
+#include "local_skills.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -126,6 +127,17 @@ static void server_row_cb(lv_event_t *e) {
     ui_text_entry_open("Dirección del servidor (IP:puerto)", address, false, UI_SCREEN_SETTINGS, server_done);
 }
 
+static void calendar_done(bool accepted, const char *text) {
+    if (!accepted) return;
+    local_calendar_set_urls(text);  // empty text removes the links
+}
+
+static void calendar_row_cb(lv_event_t *e) {
+    if (ui_nav_click_allowed()) {
+        ui_text_entry_open("Enlace del calendario (ICS)", "", false, UI_SCREEN_SETTINGS, calendar_done);
+    }
+}
+
 lv_obj_t *ui_settings_build(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     bug_settings_t settings;
@@ -164,10 +176,14 @@ lv_obj_t *ui_settings_build(void) {
     }
     add_value_label(row, battery_text, 170);
 
+    row = make_row(screen, 6, LV_SYMBOL_LIST "  Calendario");
+    add_value_label(row, local_calendar_configured() ? "Con enlace" : "Sin enlace", 150);
+    lv_obj_add_event_cb(row, calendar_row_cb, LV_EVENT_SHORT_CLICKED, NULL);
+
     lv_obj_t *hint = lv_label_create(screen);
     lv_label_set_text(hint, "Desliza hacia arriba para volver");
     lv_obj_set_style_text_font(hint, bug_font_small, 0);
     lv_obj_set_style_text_color(hint, lv_color_make(110, 110, 110), 0);
-    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, ROW_TOP + 6 * ROW_STEP + 2);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, ROW_TOP + 7 * ROW_STEP + 2);
     return screen;
 }

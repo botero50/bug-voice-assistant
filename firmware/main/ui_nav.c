@@ -15,6 +15,7 @@
 #include "ui_stopwatch.h"
 #include "ui_text_entry.h"
 #include "ui_triqui.h"
+#include "ui_games.h"
 #include "ui_weather.h"
 #include "ui_wifi.h"
 #include "esp_log.h"
@@ -103,6 +104,10 @@ static lv_obj_t *build(ui_screen_id_t id) {
         return ui_stopwatch_build();
     case UI_SCREEN_TRIQUI:
         return ui_triqui_build();
+    case UI_SCREEN_GAMES:
+        return ui_games_hub_build();
+    case UI_SCREEN_GAME:
+        return ui_game_build();
     case UI_SCREEN_SETTINGS:
         return ui_settings_build();
     case UI_SCREEN_HISTORY:
@@ -115,6 +120,12 @@ static lv_obj_t *build(ui_screen_id_t id) {
 }
 
 static void swipe_cb(lv_event_t *e);
+
+static void bench_flip(lv_timer_t *t) {
+    static bool on = false;
+    on = !on;
+    lv_obj_set_style_bg_color((lv_obj_t *)t->user_data, on ? lv_color_make(40, 90, 200) : lv_color_make(200, 40, 40), 0);
+}
 
 void ui_nav_load_screen(lv_obj_t *screen, ui_screen_id_t id, lv_scr_load_anim_t anim) {
     lv_obj_set_style_bg_color(screen, COLOR_BG_DARK, 0);
@@ -156,6 +167,32 @@ ui_screen_id_t ui_nav_current(void) {
 }
 
 void ui_nav_open_screen(const char *path, const char *json) {
+    if (strcmp(path, "bench_fill") == 0) {
+        static lv_obj_t *plate;
+        static lv_timer_t *flip = NULL;
+        lv_obj_t *screen = lv_obj_create(NULL);
+        lv_obj_remove_style_all(screen);
+        plate = lv_obj_create(screen);
+        lv_obj_remove_style_all(plate);
+        lv_obj_set_size(plate, 466, 466);
+        lv_obj_set_style_bg_opa(plate, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(plate, lv_color_make(200, 40, 40), 0);
+        if (flip) lv_timer_del(flip);
+        flip = lv_timer_create(bench_flip, 50, plate);
+        ui_nav_load_screen(screen, UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_NONE);
+        return;
+    }
+    if (strncmp(path, "games", 5) == 0) {  // "games" is the menu, "games?g=memory" starts a game
+        ui_games_set_bench(strstr(path, "bench") != NULL);
+        const char *g = strstr(path, "g=");
+        int kind = ui_games_choose(g ? g + 2 : "");
+        go(kind == 0 ? UI_SCREEN_GAMES : kind == 1 ? UI_SCREEN_GAME : UI_SCREEN_TRIQUI, LV_SCR_LOAD_ANIM_FADE_IN, true);
+        return;
+    }
+    if (strcmp(path, "home_reload") == 0) {
+        go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_FADE_IN, true);
+        return;
+    }
     if (strcmp(path, "home") == 0) {
         go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_FADE_IN, false);
         return;
@@ -167,6 +204,9 @@ void ui_nav_open_screen(const char *path, const char *json) {
     if (strcmp(path, "triqui") == 0) {  // a new game each time it is opened
         go(UI_SCREEN_TRIQUI, LV_SCR_LOAD_ANIM_FADE_IN, true);
         return;
+    }
+    if (strncmp(path, "article", 7) == 0 || strncmp(path, "headlines", 9) == 0) {
+        return;  // text is spoken, not shown
     }
     if (!json) {
         return;
@@ -251,6 +291,9 @@ static void swipe(lv_dir_t dir) {
         if (dir == LV_DIR_TOP) {
             go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP, false);
         }
+        break;
+    case UI_SCREEN_GAMES:  // the list scrolls; "Salir" leaves it
+    case UI_SCREEN_GAME:   // swipes belong to the game; "Salir" leaves it
         break;
     case UI_SCREEN_EMAIL_DETAIL:
         if (dir == LV_DIR_TOP) {

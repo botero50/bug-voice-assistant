@@ -19,5 +19,6 @@ uint8_t power_manager_get_battery_level(void);
 uint32_t power_manager_get_cpu_freq(void);
 void power_manager_enable_modem_sleep(bool enable);
 void power_manager_idle_timeout_reset(void);
+void power_manager_ui_boost(bool on);  // full CPU speed while the screen is on
 
 #endif

@@ -11,6 +11,7 @@ typedef enum {
     VOICE_ACTION_IGNORE,  // Not the wake word, or nothing heard
     VOICE_ACTION_WAKE,    // Wake word heard with no command yet
     VOICE_ACTION_REPLY,   // Spoken answer in `audio`
+    VOICE_ACTION_HEARD,   // Only the words (in `heard`): the board decides what to do with them
 } voice_action_t;
 
 typedef struct {
@@ -27,10 +28,22 @@ typedef struct {
 esp_err_t voice_client_listen(bool command_mode, const int16_t *pcm, size_t pcm_bytes, voice_result_t *result);
 void voice_result_free(voice_result_t *result);
 
+// The board understood the words (text, UTF-8) but cannot answer them itself: the PC answers, with its voice.
+esp_err_t voice_client_ask(const char *text, voice_result_t *result);
+
 // Turns "Llamar%20a%20Ana" back into text. Used for header values and for values inside them.
 void voice_client_percent_decode(char *dst, size_t cap, const char *src);
 
 // Downloads the data a skill screen draws, as JSON text. Release with heap_caps_free().
+// Logs how fast the Wi-Fi link to the server is, both ways (a diagnostic, takes about a second).
+void voice_client_bench(void);
+
+// Guided recording of the owner's voice (training data for the models on the board).
+// Asks the PC which phrase to record next. `done` is true when every phrase has enough recordings.
+esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, size_t text_size, bool *done);
+// Uploads one recording (16 kHz, 16-bit mono) under the phrase's label.
+esp_err_t voice_client_train_clip(const char *label, const int16_t *pcm, size_t pcm_bytes);
+
 esp_err_t voice_client_fetch_screen(const char *path, char **json);
 
 #endif

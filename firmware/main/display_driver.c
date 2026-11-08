@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_private/esp_clk.h"
 #include "esp_timer.h"
 #include "esp_lcd_panel_io.h"
 #include "driver/gpio.h"
@@ -42,7 +43,7 @@ static const char *TAG = "DISPLAY_DRIVER";
 #define LCD_CMD(c) (((uint32_t)LCD_OPCODE_CMD << 24) | ((uint32_t)(c) << 8))
 #define LCD_RAMWR (((uint32_t)LCD_OPCODE_PIXELS << 24) | ((uint32_t)0x2C << 8))
 
-#define LV_BUFFER_LINES 40
+#define LV_BUFFER_LINES 20
 #define LV_TICK_MS 2
 
 static esp_lcd_panel_io_handle_t lcd_io = NULL;
@@ -78,7 +79,12 @@ static esp_err_t pmu_enable_panel_power(void) {
     return i2c_master_write_to_device(I2C_PORT, AXP2101_ADDR, enable, sizeof(enable), timeout);
 }
 
+static volatile int64_t flush_started_us = 0;
+static volatile int64_t transfer_us = 0, blocking_us = 0;
+static volatile uint32_t flush_count = 0;
+
 static bool on_color_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t *event, void *ctx) {
+    transfer_us += esp_timer_get_time() - flush_started_us;
     lv_disp_flush_ready((lv_disp_drv_t *)ctx);
     return false;
 }
@@ -144,6 +150,28 @@ static esp_err_t panel_init(void) {
 }
 
 // The CO5300 only accepts windows that start and end on even boundaries.
+static uint32_t stat_frames = 0, stat_ms = 0, stat_px = 0, stat_since = 0;
+
+// LVGL calls this after every refresh with the time it took (draw plus send) and how many pixels changed
+static void monitor_cb(lv_disp_drv_t *drv, uint32_t time_ms, uint32_t px) {
+    stat_frames++;
+    stat_ms += time_ms;
+    stat_px += px;
+    uint32_t now = lv_tick_get();
+    if (stat_since == 0) stat_since = now;
+    if (now - stat_since >= 3000) {
+        ESP_LOGI(TAG, "Screen: CPU %d MHz, %u frames in %u ms (%.1f per second), %u ms each, %u pixels each", esp_clk_cpu_freq() / 1000000, (unsigned)stat_frames,
+                 (unsigned)(now - stat_since), stat_frames * 1000.0f / (now - stat_since), (unsigned)(stat_ms / stat_frames),
+                 (unsigned)(stat_px / stat_frames));
+        ESP_LOGI(TAG, "  flushes %u, in the flush call %u us each, until sent %u us each", (unsigned)flush_count,
+                 flush_count ? (unsigned)(blocking_us / flush_count) : 0, flush_count ? (unsigned)(transfer_us / flush_count) : 0);
+        flush_count = 0;
+        blocking_us = transfer_us = 0;
+        stat_frames = stat_ms = stat_px = 0;
+        stat_since = now;
+    }
+}
+
 static void rounder_cb(lv_disp_drv_t *drv, lv_area_t *area) {
     area->x1 &= ~1;
     area->y1 &= ~1;
@@ -183,6 +211,7 @@ esp_err_t display_init(void) {
     disp_drv.draw_buf = &disp_buf;
     disp_drv.flush_cb = display_flush_cb;
     disp_drv.rounder_cb = rounder_cb;
+    disp_drv.monitor_cb = monitor_cb;
 
     ESP_RETURN_ON_ERROR(panel_init(), TAG, "Panel init failed");
 
@@ -230,6 +259,9 @@ void display_gate_boost_converter(bool enabled) {
 }
 
 void display_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p) {
+    int64_t entered = esp_timer_get_time();
+    flush_started_us = entered;
+    flush_count++;
     int x1 = area->x1 + LCD_COL_OFFSET;
     int x2 = area->x2 + LCD_COL_OFFSET;
     uint8_t caset[] = {x1 >> 8, x1 & 0xFF, x2 >> 8, x2 & 0xFF};
@@ -242,6 +274,7 @@ void display_flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *col
     if (ret != ESP_OK) {
         lv_disp_flush_ready(drv);  // on_color_done won't fire, so don't leave LVGL waiting
     }
+    blocking_us += esp_timer_get_time() - entered;
 }
 
 void display_read_touch_cb(lv_indev_drv_t *drv, lv_indev_data_t *data) {

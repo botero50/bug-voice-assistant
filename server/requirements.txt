@@ -10,3 +10,6 @@ numpy
 requests
 psutil
 tzdata
+piper-tts
+waitress
+zeroconf

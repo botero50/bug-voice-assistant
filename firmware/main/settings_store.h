@@ -11,6 +11,8 @@ typedef struct {
     uint8_t brightness;  // 10-100
     uint8_t volume;      // 0-100
     bool mic_muted;
+    uint8_t ui_style;    // look of the Home screen: 0 Lumina Kinetic (default), 1 cobot telemetry
+    uint8_t palette;     // colours of the Lumina look: 0 ceramic and ochre, 1 nordic forest, 2 mono with a red dot
 } bug_settings_t;
 
 // Loads what was saved on the board. Anything never set on the device falls back to
@@ -25,5 +27,7 @@ void settings_set_server_url(const char *url);
 void settings_set_brightness(uint8_t percent);
 void settings_set_volume(uint8_t percent);
 void settings_set_mic_muted(bool muted);
+void settings_set_ui_style(uint8_t style);
+void settings_set_palette(uint8_t palette);
 
 #endif

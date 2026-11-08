@@ -52,7 +52,7 @@ static const lv_btnmatrix_ctrl_t SYMBOLS_CTRL[] = {
 
 typedef enum { PAGE_LOWER, PAGE_UPPER, PAGE_SYMBOLS1, PAGE_SYMBOLS2 } page_t;
 
-#define MAX_TEXT 64
+#define MAX_TEXT 300
 #define KEYBOARD_WIDTH 318
 #define KEYBOARD_HEIGHT 236
 #define VISIBLE_CHARS 22

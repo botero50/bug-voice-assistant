@@ -36,6 +36,7 @@ static lv_obj_t *hint = NULL;
 static lv_obj_t *bars[BAR_COUNT];
 static float levels[BAR_COUNT];
 static lv_timer_t *timer = NULL;
+static lv_obj_t *current_screen = NULL;  // only this screen's deletion may reset the globals
 static uint32_t opened_ms = 0;
 
 bool ui_music_set_data(const char *json) {
@@ -56,6 +57,7 @@ bool ui_music_set_data(const char *json) {
 }
 
 static void apply_bars(void) {
+    if (!ring) return;
     for (int i = 0; i < BAR_COUNT; i++) {
         int height = BAR_MIN_HEIGHT + (int)(levels[i] * (BAR_MAX_HEIGHT - BAR_MIN_HEIGHT));
         lv_obj_set_height(bars[i], height);
@@ -64,6 +66,7 @@ static void apply_bars(void) {
 }
 
 static void tick_cb(lv_timer_t *t) {
+    if (!ring || !station_label) return;  // the screen is gone
     // A new song from the library started: show its name
     if (music_track_serial() != seen_serial) {
         seen_serial = music_track_serial();
@@ -96,12 +99,15 @@ static void stop_cb(lv_event_t *e) {
 }
 
 static void screen_deleted_cb(lv_event_t *e) {
+    if (lv_event_get_target(e) != current_screen) return;  // an older screen going away after a newer one was built
+    current_screen = NULL;
     if (timer) {
         lv_timer_del(timer);
         timer = NULL;
     }
     ring = NULL;
     hint = NULL;
+    for (int i = 0; i < BAR_COUNT; i++) bars[i] = NULL;
     source_label = station_label = detail_label = NULL;
 }
 
@@ -119,8 +125,13 @@ static lv_obj_t *add_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t c
 }
 
 lv_obj_t *ui_music_build(void) {
+    if (timer) {  // an older music screen is still being replaced: its timer must not outlive it
+        lv_timer_del(timer);
+        timer = NULL;
+    }
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_add_event_cb(screen, screen_deleted_cb, LV_EVENT_DELETE, NULL);
+    current_screen = screen;
     opened_ms = lv_tick_get();
 
     seen_serial = music_track_serial();

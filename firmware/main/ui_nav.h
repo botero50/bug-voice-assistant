@@ -20,6 +20,8 @@ typedef enum {
     UI_SCREEN_WIFI,
     UI_SCREEN_TEXT_ENTRY,
     UI_SCREEN_STOPWATCH,     // opened by voice: "inicia el cronómetro"
+    UI_SCREEN_GAMES,         // the gaming area's menu: "juguemos"
+    UI_SCREEN_GAME,          // the game being played
     UI_SCREEN_TRIQUI,        // opened by voice: "juguemos al triqui"
 } ui_screen_id_t;
 

@@ -149,6 +149,35 @@ Rules:
 - **Long-press on ring:** Mute mic (shows a dim ring and a muted icon)
 - Left/right swipes do nothing on Home; skill screens are opened by voice (section 3.0)
 
+### 3.1b The new look: "futuristic circular speaker" (the owner's reference)
+
+The owner supplied an HTML mock-up as the interface they want: `docs/ui_reference_futuristic_circular_ai_speaker.html`
+(open it in a browser; the "Simulate Voice Command" button and the state buttons show it moving). It replaces the
+look of the Home screen, and the same frame is then used by the other screens. What it contains, and how each part
+is built on the board:
+
+| In the reference | On the board |
+|---|---|
+| Outer ring of 64 encoder tick marks, a major one (amber, long) every 8 and a medium one every 4 | Drawn once, never redrawn: 64 short lines (`lv_line`) or a background canvas in the external RAM |
+| Thin dark track ring with a bright arc that rotates, its length following the voice | `lv_arc`, its angle updated 30 times a second |
+| **Voice meter**: 32 radial bars around a ring, their length following the voice level, every fourth one brighter | 32 `lv_line` objects whose end points move with the level; only their small area is redrawn |
+| Centre hub: a ring that grows with the voice, with crosshair marks | One `lv_obj` circle resized with the level, four short lines |
+| HUD text: state tag on top (STATE: LISTENING), a small sub-line, the last words in a box, the clock and **the level in dB** at the bottom, the style name | The existing Spanish texts in the same positions: "ESCUCHANDO", "PENSANDO", "HABLANDO", "EN ESPERA"; the clock; "-26 dB" computed from the signal |
+| States with colours: standby grey-slate, listening amber, thinking cyan, speaking emerald | The assistant's states map onto them; music is purple, muted and errors red, Wi-Fi setup amber (the colours we already use for those) |
+| Three visual styles: 1 "cobot servo telemetry" (amber), 2 "sentinel optical core" (cyan, radar sweep and brackets), 3 "PLC logic ring" (emerald, a 16-step sequencer and 8 relay segments) | All three, chosen in Settings ("Estilo de pantalla"); the first one is the default |
+| No blur, no gradients, only lines and arcs ("zero canvas filter") | Same rule: it keeps the CPU low and suits the AMOLED (black pixels are off) |
+
+**The voice meter** is driven by real signals: the microphone level while the board hears you, the level of what the
+board plays while it speaks (computed from the audio it writes) and the music level while music plays. The dB number is
+20·log10 of that level, from -60 to 0.
+
+Not taken from the reference: its tap-to-change-state demo (a tap on the board still starts listening) and its fonts
+(Chakra Petch and JetBrains Mono; the board keeps Montserrat, a mono font can be added later).
+
+Work, in order: **15a** the new Home screen in style 1 with the voice meter and the dB readout; **15b** styles 2 and 3
+and the Settings choice; **15c** the tick ring and colours as the frame of the other screens, and the speaker level while
+the board talks; **15d** optional mono font.
+
 ### 3.2 Voice Feedback During STT/LLM/TTS
 
 **Phase 1: Speech-to-Text (STT)**
@@ -755,6 +784,8 @@ lv_obj_add_style(root, &bg_style, 0);
 
 ## 10. Implementation Roadmap
 
+Where each feature runs (board, a free online service called by the board, or the PC as the last resort) and the order of work are in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 Status as of 2026-11-07. Every phase is flashed to the board and tested by the owner; nothing is pushed to GitHub unless the owner asks.
 
 | Phase | Task | Status |
@@ -769,7 +800,7 @@ Status as of 2026-11-07. Every phase is flashed to the board and tested by the o
 | 8 | **Email** list and detail, **Calendar** agenda (sample data until accounts connect) | Done |
 | 9 | **Weather** screen (real data) | Done |
 | 9b | **Music** screen (internet radio), volume by voice, the user's city | Done |
-| 9c | Music: stereo and better sound (the speaker path is 16 kHz mono today) | Later |
+| 9c | Music sound: the audio bus and codecs run at 32 kHz and music streams at 32 kHz mono (bandwidth 16 kHz instead of 8 kHz); the microphone and Bug's voice stay 16 kHz (averaged down / doubled in the driver). Stereo is pointless on this one small speaker | Built, waiting for your test |
 | 10 | Crypto and dollar prices, news, Wikipedia answers, jokes, math and conversions, this PC's status | Done |
 | 10b | Timers, alarms and reminders (the board keeps them and rings even with the PC off) | Done (alarm sound and auto-close fixed) |
 | 10c | Music from your own files on this PC, with song titles | Done |
@@ -779,6 +810,20 @@ Status as of 2026-11-07. Every phase is flashed to the board and tested by the o
 | 11 | OAuth sign-in for work mailboxes whose administrator blocks passwords | Later (needs you to register an app) |
 | 12 | Error screens (low battery, mic fault, Wi-Fi lost, no server) | Built, waiting for your test (power profiles later) |
 | 13 | Screen power saving: dims to one sixth after 10 s without touch or voice, switches off after 20 s; touch, "Hola Bug", the ring tap or an alarm wakes it (the touch that wakes it is not also a tap). It stays on while Bug is listening or answering | Built |
+| 13a | Less sensitive standby: the trigger is at least 300 (was 150) and 3.5 times the room noise, speech must last 240 ms, and in standby the screen no longer reacts to sounds; it only changes once "Hola Bug" is confirmed (then "Te escucho") | Built |
+| 13c | Faster answers: the end of a sentence is detected after 550 ms of silence (was 800), the wake chime is shorter (140 ms) and the mic is flushed for 150 ms (was 400), so the first words of the command are not lost | Built |
+| 13d | Answer speed. Real causes found by timing every step: (1) the board downloaded at only 25 KB/s because of small CPU caches and Wi-Fi buffers (now 32 KB instruction / 64 KB data cache, bigger Wi-Fi buffers, TCP windows 32 KB, Wi-Fi and TCP buffers may use the external RAM, Wi-Fi power saving off): now 860 KB/s; (2) Flask's built-in server sent answers in small pieces (the server now runs on waitress): an 80 KB answer arrives in 50-200 ms instead of 2 s; (3) Edge TTS stalls 2-12 s about one time in three (backup request, and a local Piper voice after 1.4 s); (4) a long speech prompt slowed recognition (kept short); (5) the wake check uses fast decoding. Typical exchange now: cached answer about 0.5 s, new answer 1.5-2.7 s | Built |
+| 14 | **Local-first**: the board decides what the words mean and answers by itself when it can, with its own voice (joined recorded words in the storage partition, `server/clips/make_clips.py`). The PC only turns speech into words (and is asked, through `/ask`, for what needs the internet or its data). Local so far: time, date, volume, stop music, stopwatch, tic-tac-toe, battery, home. Still on the PC for now: timers and alarms, lists, favourites, weather, news, Wikipedia, math, books, calendar, email | In progress |
+| 14c | **Works without Wi-Fi or PC**: the board starts without waiting for Wi-Fi, recognises "Hola Bug" and 28 fixed commands by itself (a small neural network trained from your own recordings, `server/wake/train_commands.py`, running in about 0.75 s) and answers with its own voice; the PC is asked only when the board is not sure, and not at all while it is known to be down | Built, accuracy improves with more recordings |
+| 14b | On-board "Hola Bug" detector (small neural network, `server/wake/`, `firmware/main/wake_local.c`): built and verified against PyTorch, trained on synthetic voices plus your real clips; it logs scores but does not wake yet | In progress |
+| 15a | New Home screen from your reference: tick ring, rotating arc, voice meter (32 bars), hub, state tag, dB readout, in the cobot style | Built and flashed (tick bezel, turning arc, 32-bar meter fed by mic, speaker and music level, hub, dB). State tag, clock and transcript box still to refine after you look at it |
+| 15e | **Lumina Kinetic look** (reference `docs/ui_reference_lumina_kinetic.html`): volume rim you drag, 48-tick bezel, 16 elastic petals driven by the mic, speaker and music level, two ripples, the clock in the middle (the words replace it while talking), three palettes (ceramic and ochre, nordic forest, mono with a red dot). **Now the default Home.** The cobot look (15a) stays as the second style | Built and flashed |
+| 15f | Voice skill to change the look: "cambia la interfaz" (switches Lumina and cobot), "pon la interfaz clásica / Lumina", "cambia los colores", "pon el tema nórdico / cerámica / mono". Saved in the board's memory | Built and flashed |
+| 15g | Text answers (jokes, news, Wikipedia, translation, books, briefing) are only spoken: the article and headline screens are no longer opened, so Home stays and nothing is left to close | Done |
+| 13e | **Screen speed.** Measured with a frame counter (`DISPLAY_DRIVER: Screen:` lines in the log): menus scrolled at about 9 frames a second. Causes found and fixed: (1) every letter of the Montserrat TrueType font was redrawn from its outline each time (now each letter is drawn once and kept: scrolling went to 29 frames a second), (2) the firmware was compiled for debugging (now for speed), (3) the power manager could leave the CPU at 80 MHz (now held at 240 MHz while the screen is fully on), (4) the screen refreshes every 16 ms and the touch is read every 10 ms, (5) LVGL uses the library copy routines. A full-screen change is limited by the display link to about 18 frames a second | Done |
+| 15b | Sentinel and PLC styles, "Estilo de pantalla" in Settings | Planned |
+| 15c | The same frame on the other screens; speaker level while the board talks | Planned |
+| 15d | Optional mono font | Planned |
 | 13b | Accessibility testing, animation polish, performance | Later |
 
 ### Backlog: planned but not built yet
@@ -790,7 +835,7 @@ Nothing here needs a Claude key unless marked.
 | B1 | Home screen shows the next alarm or timer and counts down | nothing | Built |
 | B2 | Morning briefing: "buenos días" reads time, weather, today's events, unread mail | nothing | Built |
 | B3 | Radio favourites ("guarda esta emisora", "pon mis favoritas") | nothing | Built |
-| B4 | Quick games: tic-tac-toe (triqui) on the display, trivia by voice; 2048 not built (it needs swipes, which are used for navigation) | nothing | Built |
+| B4 | Quick games: the gaming area (`docs/GAMES.md`): a menu and 25 touch games in six categories (all of TamaPoke's that fit Bug), plus triqui; trivia by voice | nothing | Built, untested on the device |
 | B5 | Sleep timer for music ("apaga la música en 30 minutos") | nothing | Built |
 | B6 | Reminders that repeat (every day, every Monday) | nothing | Built |
 | B7 | Notes and shopping list by voice, shown on a screen and kept on the PC | nothing | Built |

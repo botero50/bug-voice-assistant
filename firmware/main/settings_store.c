@@ -44,6 +44,8 @@ void settings_load(void) {
     current.brightness = 70;
     current.volume = 80;
     current.mic_muted = false;
+    current.ui_style = 0;
+    current.palette = 0;
 
     nvs_handle_t handle;
     if (nvs_open(NAMESPACE, NVS_READONLY, &handle) == ESP_OK) {
@@ -55,6 +57,8 @@ void settings_load(void) {
         nvs_get_str(handle, "server", current.server_url, &length);
         nvs_get_u8(handle, "bright", &current.brightness);
         nvs_get_u8(handle, "volume", &current.volume);
+        nvs_get_u8(handle, "style", &current.ui_style);
+        nvs_get_u8(handle, "palette", &current.palette);
         uint8_t muted = 0;
         if (nvs_get_u8(handle, "muted", &muted) == ESP_OK) {
             current.mic_muted = muted != 0;
@@ -64,6 +68,8 @@ void settings_load(void) {
     if (current.brightness < 10) current.brightness = 10;
     if (current.brightness > 100) current.brightness = 100;
     if (current.volume > 100) current.volume = 100;
+    if (current.ui_style > 1) current.ui_style = 0;
+    if (current.palette > 2) current.palette = 0;
 
     ESP_LOGI(TAG, "Loaded: wifi %s, server %s, brightness %d, volume %d, mic %s",
              current.wifi_ssid[0] ? "set" : "not set", current.server_url, current.brightness, current.volume,
@@ -114,4 +120,20 @@ void settings_set_mic_muted(bool muted) {
     current.mic_muted = muted;
     xSemaphoreGive(lock);
     save_u8("muted", muted ? 1 : 0);
+}
+
+void settings_set_ui_style(uint8_t style) {
+    if (style > 1) style = 0;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    current.ui_style = style;
+    xSemaphoreGive(lock);
+    save_u8("style", style);
+}
+
+void settings_set_palette(uint8_t palette) {
+    if (palette > 2) palette = 0;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    current.palette = palette;
+    xSemaphoreGive(lock);
+    save_u8("palette", palette);
 }

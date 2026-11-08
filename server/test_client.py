@@ -16,6 +16,7 @@ import requests
 
 URL = "http://127.0.0.1:5000"
 SAMPLE_RATE = 16000
+MUSIC_RATE = 32000  # the music streams are 32 kHz mono
 
 
 def speak(text):
@@ -154,7 +155,7 @@ def check_screen_data():
 
 
 def check_music_stream(music_ids):
-    """The radio stream must deliver real audio: about 3 seconds of 16 kHz PCM that isn't silence."""
+    """The radio stream must deliver real audio: about 1.5 seconds of 32 kHz PCM that isn't silence."""
     import numpy as np
 
     if not music_ids:
@@ -171,7 +172,7 @@ def check_music_stream(music_ids):
     samples = np.frombuffer(data[: len(data) // 2 * 2], dtype=np.int16).astype(np.float32)
     rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) else 0.0
     ok = len(data) >= wanted and rms > 100 and screen.get("type") == "music"
-    print(f"{'PASS' if ok else 'FAIL'}  radio stream of {screen.get('station')!r}: {len(data) / 2 / SAMPLE_RATE:.1f} s of audio, rms {rms:.0f}")
+    print(f"{'PASS' if ok else 'FAIL'}  radio stream of {screen.get('station')!r}: {len(data) / 2 / MUSIC_RATE:.1f} s of audio, rms {rms:.0f}")
     return 0 if ok else 1
 
 
@@ -187,7 +188,7 @@ def check_library_stream():
     samples = np.frombuffer(first.content[: len(first.content) // 2 * 2], dtype=np.int16).astype(np.float32)
     rms = float(np.sqrt(np.mean(samples ** 2))) if len(samples) else 0.0
     ok = bool(title1) and title1 != title2 and rms > 100
-    print(f"{'PASS' if ok else 'FAIL'}  library: {title1!r} ({len(first.content) / 2 / SAMPLE_RATE:.1f} s, rms {rms:.0f}), then {title2!r}")
+    print(f"{'PASS' if ok else 'FAIL'}  library: {title1!r} ({len(first.content) / 2 / MUSIC_RATE:.1f} s, rms {rms:.0f}), then {title2!r}")
     return 0 if ok else 1
 
 

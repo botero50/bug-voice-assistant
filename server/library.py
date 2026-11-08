@@ -14,7 +14,7 @@ from text_utils import normalize
 
 log = logging.getLogger("bug")
 
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 32000  # music: twice the voice rate
 EXTENSIONS = {".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma"}
 CHUNK_BYTES = 4096
 BYTES_PER_SECOND = SAMPLE_RATE * 2

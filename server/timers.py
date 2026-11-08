@@ -218,7 +218,8 @@ def short_remaining(seconds):
 
 def board_action(entry):
     repeat = f"&r={entry['repeat']}" if entry.get("repeat") else ""
-    return f"timer?id={entry['id']}&at={entry['at']}&l={quote(entry['label'] or 'Temporizador', safe='')}{repeat}"
+    kind = {"timer": 1, "alarm": 2, "reminder": 3}.get(entry.get("kind"), 0)
+    return f"timer?id={entry['id']}&at={entry['at']}&l={quote(entry['label'] or 'Temporizador', safe='')}{repeat}&k={kind}"
 
 
 WEEKDAY_NUMBERS = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6}

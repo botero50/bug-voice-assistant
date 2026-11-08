@@ -41,6 +41,7 @@ jobs:
           grep -q '^0x8000 partition_table/partition-table.bin$' flash_args
           grep -q '^0xd000 ota_data_initial.bin$' flash_args
           grep -q '^0x10000 bug-voice-assistant.bin$' flash_args
+          grep -q '^0x810000 ../voice_clips.bin$' flash_args
 
       - name: Assemble installer site
         shell: bash
@@ -51,6 +52,7 @@ jobs:
           cp firmware/build/partition_table/partition-table.bin web/firmware/partitions.bin
           cp firmware/build/ota_data_initial.bin web/firmware/ota_data.bin
           cp firmware/build/bug-voice-assistant.bin web/firmware/app.bin
+          cp firmware/voice_clips.bin web/firmware/voice_clips.bin
           sed -i "s/__VERSION__/$version/g" web/index.html web/manifest.json
           sed -i "s/__BUILD__/${GITHUB_SHA::7}/g" web/index.html
           ls -l web web/firmware

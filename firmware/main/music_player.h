@@ -2,6 +2,8 @@
 #define MUSIC_PLAYER_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 // Plays a live radio stream the PC server sends as 16 kHz mono audio. The speaker is shared
 // with Bug's voice, so the assistant pauses the music while it listens and answers.
@@ -35,6 +37,18 @@ bool music_sleep_expired(void);
 const char *music_track_title(void);
 const char *music_track_artist(void);
 int music_track_serial(void);
+
+// A direct station (stream_path starting with http) or the card ("sd:") is played by the board itself.
+// Next / previous song of the card (+1 / -1), and whether the card has MP3 files in /sd/music.
+void music_next_song(int direction);
+bool music_card_has_songs(void);
+bool music_card_playing(void);  // music is on and it comes from the card
+
+// Shows another name on the music screen (the board switched station by itself)
+void music_set_now_playing(const char *name, const char *detail);
+
+// Plays an MP3 held in memory to the speaker, to the end (used for the online voice).
+bool music_play_mp3_memory(const uint8_t *data, size_t size);
 
 void music_set_label(const char *station_name);
 const char *music_label(void);
