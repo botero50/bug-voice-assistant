@@ -48,7 +48,7 @@ void alarms_init(void) {
     ESP_LOGI(TAG, "%d alarms saved on the board", count);
 }
 
-void alarms_add(uint32_t id, time_t at, const char *label) {
+void alarms_add(uint32_t id, time_t at, const char *label, uint32_t repeat) {
     int slot = -1;
     for (int i = 0; i < MAX_ALARMS; i++) {
         if (entries[i].at && entries[i].id == id) {
@@ -65,6 +65,7 @@ void alarms_add(uint32_t id, time_t at, const char *label) {
     }
     entries[slot].id = id;
     entries[slot].at = at;
+    entries[slot].repeat = repeat;
     strlcpy(entries[slot].label, label, sizeof(entries[slot].label));
     save();
     ESP_LOGI(TAG, "Saved #%u \"%s\" for %lld (in %lld s)", (unsigned)id, label, (long long)at,
@@ -87,6 +88,24 @@ void alarms_cancel_ids(const char *ids) {
     save();
 }
 
+bool alarms_next(alarm_entry_t *out) {
+    time_t now = time(NULL);
+    if (now < CLOCK_VALID_AFTER) {
+        return false;
+    }
+    int best = -1;
+    for (int i = 0; i < MAX_ALARMS; i++) {
+        if (entries[i].at && entries[i].at > now && (best < 0 || entries[i].at < entries[best].at)) {
+            best = i;
+        }
+    }
+    if (best < 0) {
+        return false;
+    }
+    *out = entries[best];
+    return true;
+}
+
 bool alarms_pop_due(alarm_entry_t *out) {
     time_t now = time(NULL);
     if (now < CLOCK_VALID_AFTER) {
@@ -98,7 +117,14 @@ bool alarms_pop_due(alarm_entry_t *out) {
         }
         bool missed = now - entries[i].at > MISSED_AFTER_SECONDS;
         alarm_entry_t due = entries[i];
-        entries[i].at = 0;
+        if (entries[i].repeat) {
+            // Rings again at the next time; times missed while the board was off are skipped
+            while (entries[i].at <= now) {
+                entries[i].at += entries[i].repeat;
+            }
+        } else {
+            entries[i].at = 0;
+        }
         save();
         if (missed) {
             ESP_LOGW(TAG, "\"%s\" was missed while the board was off", due.label);

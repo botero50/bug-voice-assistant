@@ -16,6 +16,7 @@ typedef enum {
     ASSISTANT_STATE_THINKING,    // Sent to the PC, waiting for the answer
     ASSISTANT_STATE_SPEAKING,    // Playing the answer
     ASSISTANT_STATE_NO_SERVER,   // The PC server didn't answer
+    ASSISTANT_STATE_MIC_ERROR,   // The microphone stopped delivering audio
 } assistant_state_t;
 
 #define ASSISTANT_HISTORY_SIZE 5

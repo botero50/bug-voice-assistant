@@ -12,7 +12,9 @@
 #include "ui_music.h"
 #include "ui_rows.h"
 #include "ui_settings.h"
+#include "ui_stopwatch.h"
 #include "ui_text_entry.h"
+#include "ui_triqui.h"
 #include "ui_weather.h"
 #include "ui_wifi.h"
 #include "esp_log.h"
@@ -97,6 +99,10 @@ static lv_obj_t *build(ui_screen_id_t id) {
         return ui_article_build();
     case UI_SCREEN_ALARM:
         return ui_alarm_build();
+    case UI_SCREEN_STOPWATCH:
+        return ui_stopwatch_build();
+    case UI_SCREEN_TRIQUI:
+        return ui_triqui_build();
     case UI_SCREEN_SETTINGS:
         return ui_settings_build();
     case UI_SCREEN_HISTORY:
@@ -154,6 +160,14 @@ void ui_nav_open_screen(const char *path, const char *json) {
         go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_FADE_IN, false);
         return;
     }
+    if (strcmp(path, "stopwatch") == 0) {  // no data: the stopwatch module holds its own state
+        go(UI_SCREEN_STOPWATCH, LV_SCR_LOAD_ANIM_FADE_IN, true);
+        return;
+    }
+    if (strcmp(path, "triqui") == 0) {  // a new game each time it is opened
+        go(UI_SCREEN_TRIQUI, LV_SCR_LOAD_ANIM_FADE_IN, true);
+        return;
+    }
     if (!json) {
         return;
     }
@@ -206,6 +220,10 @@ void ui_nav_tick(void) {
     }
 }
 
+void ui_nav_swallow_touch(void) {
+    last_gesture_ms = lv_tick_get();
+}
+
 bool ui_nav_click_allowed(void) {
     return lv_tick_elaps(last_gesture_ms) > CLICK_BLOCK_MS;
 }
@@ -228,6 +246,8 @@ static void swipe(lv_dir_t dir) {
     case UI_SCREEN_ARTICLE:
     case UI_SCREEN_SETTINGS:
     case UI_SCREEN_HISTORY:
+    case UI_SCREEN_STOPWATCH:  // keeps counting after you leave
+    case UI_SCREEN_TRIQUI:
         if (dir == LV_DIR_TOP) {
             go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP, false);
         }

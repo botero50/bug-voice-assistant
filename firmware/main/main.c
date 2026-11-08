@@ -1,5 +1,7 @@
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
 #include "lvgl.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -14,6 +16,7 @@
 #include "alarms.h"
 #include "assistant.h"
 #include "music_player.h"
+#include "ota_update.h"
 #include "esp_heap_caps.h"
 #include "settings_store.h"
 #include "ui_nav.h"
@@ -37,14 +40,42 @@
 static const char *TAG = "BUG_MAIN";
 
 #define STANDBY_PROMPT "Di “Hola Bug”"
+#define DIM_AFTER_MS 10000      // no touch and no voice for this long: dim the screen (battery, AMOLED burn-in)
+#define OFF_AFTER_MS 20000      // and switch it off after this long; touch, voice or an alarm wakes it
+#define DIM_DIVISOR 6           // dimmed brightness is the chosen brightness divided by this
 #define ANSWER_LINGER_MS 10000  // how long an answer stays on screen after it was spoken
 
 static assistant_state_t previous_state = ASSISTANT_STATE_CONNECTING;
 static uint32_t answer_expires_ms = 0;
 static bool wifi_screen_offered = false;
+static bool standby_prompt_active = false;  // Home shows "Di Hola Bug" (plus the next alarm)
+static char standby_alarm_line[72] = "";
 
 static uint32_t now_ms(void) {
     return pdTICKS_TO_MS(xTaskGetTickCount());
+}
+
+// "Di Hola Bug", with the next alarm or timer above it and how long until it rings.
+static void refresh_standby_prompt(bool force) {
+    char line[72] = "";
+    alarm_entry_t next;
+    if (alarms_next(&next)) {
+        long left = (long)(next.at - time(NULL));
+        char remaining[24];
+        if (left >= 3600) {
+            snprintf(remaining, sizeof(remaining), "%ld h %02ld min", left / 3600, left % 3600 / 60);
+        } else if (left >= 60) {
+            snprintf(remaining, sizeof(remaining), "%ld min", (left + 59) / 60);
+        } else {
+            snprintf(remaining, sizeof(remaining), "%ld s", left < 0 ? 0 : left);
+        }
+        snprintf(line, sizeof(line), LV_SYMBOL_BELL "  %.22s · %s", next.label, remaining);
+    }
+    if (!force && strcmp(line, standby_alarm_line) == 0) {
+        return;
+    }
+    strlcpy(standby_alarm_line, line, sizeof(standby_alarm_line));
+    ui_home_set_texts(line, STANDBY_PROMPT);
 }
 
 static void show_texts(const char *heard, const char *answer) {
@@ -61,6 +92,7 @@ static void show_assistant_state(assistant_state_t state) {
     char heard[128], reply[256];
     assistant_get_texts(heard, sizeof(heard), reply, sizeof(reply));
     answer_expires_ms = 0;
+    standby_prompt_active = false;
 
     // While the user talks to Bug, a banner replaces the clock on any screen, so a skill
     // screen stays visible instead of being replaced by the listening ring.
@@ -126,7 +158,8 @@ static void show_assistant_state(assistant_state_t state) {
             show_texts(heard, reply);  // keep the last exchange visible for a while
             answer_expires_ms = now_ms() + ANSWER_LINGER_MS;
         } else {
-            show_texts("", STANDBY_PROMPT);
+            standby_prompt_active = true;
+            refresh_standby_prompt(true);
         }
         break;
     case ASSISTANT_STATE_HEARING:
@@ -147,7 +180,11 @@ static void show_assistant_state(assistant_state_t state) {
         break;
     case ASSISTANT_STATE_NO_SERVER:
         ui_home_set_mode(UI_HOME_ERROR);
-        show_texts("", "No encuentro el servidor");
+        show_texts("", "No encuentro el servidor. ¿Está encendido el PC?");
+        break;
+    case ASSISTANT_STATE_MIC_ERROR:
+        ui_home_set_mode(UI_HOME_ERROR);
+        show_texts("", "No oigo el micrófono. Reinicia la placa");
         break;
     }
     previous_state = state;
@@ -190,6 +227,8 @@ void app_main(void) {
     } else {
         ESP_LOGE(TAG, "✗ Display initialization failed - continuing without screen");
     }
+
+    clock_restore();
 
     // Initialize MicroSD card
     ESP_LOGI(TAG, "Initializing MicroSD card...");
@@ -300,11 +339,22 @@ void app_main(void) {
     uint32_t last_clock_ms = 0;
     uint32_t last_battery_ms = 0;
     int last_battery_percent = -2;
+    int battery_warned = 100;
 
     uint32_t last_alarm_ms = 0;
+    bool started_ok_marked = false;
+    uint32_t voice_activity_ms = 0;
+    int screen_level = 0;  // 0 on, 1 dimmed, 2 off
+    bool voice_busy = false;  // Bug is hearing, thinking or speaking: keep the screen on
 
     while (1) {
         uint32_t now = now_ms();
+
+        // A freshly updated firmware that runs this long is good: keep it (otherwise the old one returns)
+        if (!started_ok_marked && now > 20000) {
+            started_ok_marked = true;
+            ota_mark_started_ok();
+        }
 
         // Timers and alarms ring even without a screen, and even if the PC is off
         if (now - last_alarm_ms >= 1000) {
@@ -323,6 +373,9 @@ void app_main(void) {
             assistant_state_t state;
             if (assistant_take_state(&state)) {
                 show_assistant_state(state);
+                voice_activity_ms = now;  // any change is activity, e.g. Bug just finished an answer
+                voice_busy = state == ASSISTANT_STATE_HEARING || state == ASSISTANT_STATE_LISTENING ||
+                             state == ASSISTANT_STATE_THINKING || state == ASSISTANT_STATE_SPEAKING;
             }
 
             // A voice command can open a screen: "muéstrame los correos" opens the email screen
@@ -330,8 +383,14 @@ void app_main(void) {
             char *screen_json = NULL;
             if (assistant_take_screen(screen_path, sizeof(screen_path), &screen_json)) {
                 ESP_LOGI(TAG, "Opening screen %s", screen_path);
+                voice_activity_ms = now;
                 ui_nav_open_screen(screen_path, screen_json);
                 heap_caps_free(screen_json);
+            }
+
+            char ota_message[64];
+            if (ota_take_message(ota_message, sizeof(ota_message))) {
+                ui_notice(ota_message, COLOR_ACCENT_BLUE, 6000);
             }
 
             if (now - last_level_ms >= 50) {
@@ -348,11 +407,52 @@ void app_main(void) {
                     ui_update_time(99, 0);
                 }
                 ui_update_wifi_status(network_manager_is_connected() == ESP_OK);
+
+                // Dim, then switch the screen off, when nobody touches or talks to Bug; touch, voice or an
+                // alarm brings it back. A touch that wakes the screen is not also a tap on a button.
+                uint32_t idle = lv_disp_get_inactive_time(NULL);
+                if (now - voice_activity_ms < idle) {
+                    idle = now - voice_activity_ms;
+                }
+                if (alarm_ringing()) {
+                    idle = 0;
+                }
+                if (voice_busy) {
+                    voice_activity_ms = now;
+                    idle = 0;
+                }
+                int wanted_level = idle > OFF_AFTER_MS ? 2 : (idle > DIM_AFTER_MS ? 1 : 0);
+                if (wanted_level != screen_level && (wanted_level > screen_level || idle < 1500)) {
+                    bug_settings_t now_settings;
+                    settings_copy(&now_settings);
+                    if (wanted_level == 2) {
+                        display_gate_boost_converter(false);  // display off: no light at all
+                    } else {
+                        if (screen_level == 2) {
+                            display_gate_boost_converter(true);
+                            ui_nav_swallow_touch();
+                        }
+                        uint8_t level = now_settings.brightness / DIM_DIVISOR;
+                        display_set_brightness(wanted_level == 1 ? (level < 3 ? 3 : level) : now_settings.brightness);
+                    }
+                    screen_level = wanted_level;
+                }
                 ui_nav_tick();
 
                 if (answer_expires_ms && now > answer_expires_ms) {
                     answer_expires_ms = 0;
-                    show_texts("", STANDBY_PROMPT);
+                    standby_prompt_active = true;
+                    refresh_standby_prompt(true);
+                } else if (standby_prompt_active) {
+                    refresh_standby_prompt(false);  // keeps the alarm countdown current
+                }
+
+                if (music_sleep_expired()) {
+                    ESP_LOGI(TAG, "Sleep timer: turning the music off");
+                    music_stop();
+                    if (ui_nav_current() == UI_SCREEN_MUSIC) {
+                        ui_nav_go(UI_SCREEN_HOME, LV_SCR_LOAD_ANIM_OUT_TOP);
+                    }
                 }
             }
 
@@ -361,6 +461,16 @@ void app_main(void) {
                 battery_status_t battery;
                 if (battery_read(&battery)) {
                     ui_update_power(battery.percent, battery.charging);
+                    // Warn once when the level drops through 15% and again through 5%; re-armed by charging
+                    if (battery.charging || battery.percent > 20) {
+                        battery_warned = 100;
+                    } else if (battery.percent <= 5 && battery_warned > 5) {
+                        battery_warned = 5;
+                        ui_notice("Batería casi vacía", COLOR_ACCENT_RED, 8000);
+                    } else if (battery.percent <= 15 && battery_warned > 15) {
+                        battery_warned = 15;
+                        ui_notice("Batería baja · conecta el cargador", COLOR_ACCENT_RED, 6000);
+                    }
                     if (battery.percent != last_battery_percent) {
                         last_battery_percent = battery.percent;
                         ESP_LOGI(TAG, "Battery %d%%, charging=%d, USB power=%d", battery.percent, battery.charging,

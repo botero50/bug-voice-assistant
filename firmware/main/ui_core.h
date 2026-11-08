@@ -21,6 +21,9 @@ void ui_update_time(uint16_t hour, uint16_t minute);  // hour > 23 shows "--:--"
 void ui_update_wifi_status(bool connected);
 void ui_mute_mic(bool muted);
 
+// A small message above the battery that disappears by itself after `ms` ("Batería baja").
+void ui_notice(const char *text, lv_color_t color, uint32_t ms);
+
 // Replaces the clock with a short colored message ("Te escucho"); NULL brings the clock back.
 void ui_voice_banner(const char *text, lv_color_t color);
 

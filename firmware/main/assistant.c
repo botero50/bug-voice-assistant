@@ -4,7 +4,9 @@
 #include "clock.h"
 #include "music_player.h"
 #include "network_manager.h"
+#include "ota_update.h"
 #include "settings_store.h"
+#include "stopwatch.h"
 #include "voice_client.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -149,14 +151,42 @@ static void publish_level(float rms) {
     audio_level = level < 0 ? 0 : (level > 1 ? 1 : level);
 }
 
+#define MIC_FAULT_AFTER_FAILURES 300  // about three seconds of reads that return nothing
+
 static bool read_frame(int16_t *frame) {
+    static int failures = 0;
     size_t got = 0;
     esp_err_t ret = audio_read_samples(frame, FRAME_SAMPLES * sizeof(int16_t), &got);
     if (ret != ESP_OK || got != FRAME_SAMPLES * sizeof(int16_t)) {
+        if (++failures == MIC_FAULT_AFTER_FAILURES) {
+            ESP_LOGE(TAG, "The microphone is not delivering audio");
+            set_state(ASSISTANT_STATE_MIC_ERROR);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
         return false;
     }
+    if (failures >= MIC_FAULT_AFTER_FAILURES) {
+        ESP_LOGI(TAG, "The microphone is back");
+        set_state(ASSISTANT_STATE_STANDBY);
+    }
+    failures = 0;
     return true;
+}
+
+// The PC did not answer. If the Wi-Fi itself dropped, wait for it to come back (the network
+// manager keeps retrying); otherwise show that the server is missing.
+static void report_unreachable(void) {
+    set_texts("", "");
+    if (network_manager_is_connected() != ESP_OK) {
+        ESP_LOGW(TAG, "Wi-Fi lost, waiting for it to come back");
+        set_state(ASSISTANT_STATE_CONNECTING);
+        for (int i = 0; i < 60 && network_manager_is_connected() != ESP_OK && !wifi_dirty; i++) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        return;
+    }
+    set_state(ASSISTANT_STATE_NO_SERVER);
+    vTaskDelay(pdMS_TO_TICKS(3000));
 }
 
 static void track_noise(float rms) {
@@ -319,19 +349,31 @@ static void speak(const voice_result_t *result) {
     int volume_delta = 0;
     int volume_set = -1;
     bool start_music = false;
+    bool start_ota = false;
     char music_path[160] = "";
     if (result->screen[0]) {
         char *json = NULL;
         if (strncmp(result->screen, "volume?d=", 9) == 0) {
             volume_delta = atoi(result->screen + 9);
+        } else if (strncmp(result->screen, "stopwatch?cmd=", 14) == 0) {
+            stopwatch_command(result->screen + 14);
+            publish_screen("stopwatch", NULL);
+        } else if (strncmp(result->screen, "ota?", 4) == 0) {
+            start_ota = true;  // after the announcement
+        } else if (strncmp(result->screen, "triqui?", 7) == 0) {
+            publish_screen("triqui", NULL);
+        } else if (strncmp(result->screen, "music_sleep?s=", 14) == 0) {
+            music_sleep_in(atoi(result->screen + 14));
         } else if (strncmp(result->screen, "volume?v=", 9) == 0) {
             volume_set = atoi(result->screen + 9);
         } else if (strncmp(result->screen, "timer?", 6) == 0) {
             // Saved on the board first, so it rings even if the PC is off later
-            char id[16] = "", at[24] = "", name[64] = "";
+            char id[16] = "", at[24] = "", name[64] = "", repeat[16] = "";
             if (param(result->screen, "id", id, sizeof(id)) && param(result->screen, "at", at, sizeof(at))) {
                 param(result->screen, "l", name, sizeof(name));
-                alarms_add((uint32_t)strtoul(id, NULL, 10), (time_t)atoll(at), name[0] ? name : "Temporizador");
+                param(result->screen, "r", repeat, sizeof(repeat));
+                alarms_add((uint32_t)strtoul(id, NULL, 10), (time_t)atoll(at), name[0] ? name : "Temporizador",
+                           (uint32_t)strtoul(repeat, NULL, 10));
             }
         } else if (strncmp(result->screen, "timer_cancel?", 13) == 0) {
             char ids[96] = "";
@@ -366,6 +408,9 @@ static void speak(const voice_result_t *result) {
     }
     if (volume_delta) {
         change_volume(volume_delta);
+    }
+    if (start_ota) {
+        ota_update_start();
     }
     if (start_music) {
         music_start(music_path);  // after the announcement, so the two never overlap
@@ -441,9 +486,7 @@ static void handle_command_with_voice(int16_t *utterance) {
     voice_result_t result;
     esp_err_t err = voice_client_listen(true, utterance, samples * sizeof(int16_t), &result);
     if (err != ESP_OK) {
-        set_texts("", "");
-        set_state(ASSISTANT_STATE_NO_SERVER);
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        report_unreachable();
         return;
     }
     if (result.action == VOICE_ACTION_REPLY) {
@@ -491,9 +534,7 @@ static void assistant_task(void *arg) {
         voice_result_t result;
         esp_err_t err = voice_client_listen(false, utterance, samples * sizeof(int16_t), &result);
         if (err != ESP_OK) {
-            set_texts("", "");
-            set_state(ASSISTANT_STATE_NO_SERVER);
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            report_unreachable();
             continue;
         }
 

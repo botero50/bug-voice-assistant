@@ -202,8 +202,29 @@ void music_start(const char *path) {
     start_task();
 }
 
+static volatile uint32_t sleep_at_ms = 0;  // 0 means no sleep timer
+
+static uint32_t uptime_ms(void) {
+    return pdTICKS_TO_MS(xTaskGetTickCount());
+}
+
+void music_sleep_in(int seconds) {
+    sleep_at_ms = seconds > 0 ? uptime_ms() + (uint32_t)seconds * 1000 : 0;
+    if (sleep_at_ms == 0 && seconds > 0) sleep_at_ms = 1;
+    ESP_LOGI(TAG, "Music sleep timer: %d s", seconds);
+}
+
+bool music_sleep_expired(void) {
+    if (!sleep_at_ms || (int32_t)(uptime_ms() - sleep_at_ms) < 0) {
+        return false;
+    }
+    sleep_at_ms = 0;
+    return true;
+}
+
 void music_stop(void) {
     wanted = false;
+    sleep_at_ms = 0;
     stop_task();
 }
 

@@ -13,15 +13,19 @@ typedef struct {
     uint32_t id;
     time_t at;        // when it rings, as a Unix time; 0 means this slot is free
     char label[48];
+    uint32_t repeat;  // seconds until it rings again (86400 daily, 604800 weekly); 0 rings once
 } alarm_entry_t;
 
 // Loads what was saved. Call once after nvs_flash_init().
 void alarms_init(void);
 
-void alarms_add(uint32_t id, time_t at, const char *label);
+void alarms_add(uint32_t id, time_t at, const char *label, uint32_t repeat);
 
 // ids is a comma separated list from the server, e.g. "3,4".
 void alarms_cancel_ids(const char *ids);
+
+// The entry that rings soonest, without removing it. False when nothing is waiting.
+bool alarms_next(alarm_entry_t *out);
 
 // Returns true once for each entry that has come due. Needs the clock to be set. An entry that
 // was missed by more than five minutes (the board was off) is dropped without ringing.

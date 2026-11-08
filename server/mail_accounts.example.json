@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Gmail",
+    "host": "imap.gmail.com",
+    "user": "you@gmail.com",
+    "password": "abcd efgh ijkl mnop"
+  }
+]

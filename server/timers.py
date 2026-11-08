@@ -51,16 +51,26 @@ def _save(entries):
 def active_entries():
     """Entries that haven't rung yet (a few seconds of grace), soonest first."""
     now = time.time()
-    entries = [e for e in _load() if e["at"] > now - 5]
+    entries = []
+    for e in _load():
+        if e.get("repeat"):  # a repeating entry is always waiting for its next time
+            e = dict(e)
+            while e["at"] <= now - 5:
+                e["at"] += e["repeat"]
+        elif e["at"] <= now - 5:
+            continue
+        entries.append(e)
     entries.sort(key=lambda e: e["at"])
     return entries
 
 
-def add_entry(at, label, kind):
+def add_entry(at, label, kind, repeat=0):
     entries = _load()
     entry_id = max([e["id"] for e in entries] + [0]) + 1
     entry = {"id": entry_id, "at": int(at), "label": label, "kind": kind}
-    entries = [e for e in entries if e["at"] > time.time() - 5] + [entry]
+    if repeat:
+        entry["repeat"] = repeat
+    entries = [e for e in entries if e["at"] > time.time() - 5 or e.get("repeat")] + [entry]
     _save(entries)
     return entry
 
@@ -69,7 +79,8 @@ def remove_entries(kind=None):
     """Removes every active entry of that kind (or all). Returns the removed ids."""
     entries = _load()
     now = time.time()
-    removed = [e["id"] for e in entries if e["at"] > now - 5 and (kind is None or e["kind"] == kind)]
+    removed = [e["id"] for e in entries
+               if (e["at"] > now - 5 or e.get("repeat")) and (kind is None or e["kind"] == kind)]
     _save([e for e in entries if e["id"] not in removed])
     return removed
 
@@ -206,7 +217,29 @@ def short_remaining(seconds):
 
 
 def board_action(entry):
-    return f"timer?id={entry['id']}&at={entry['at']}&l={quote(entry['label'] or 'Temporizador', safe='')}"
+    repeat = f"&r={entry['repeat']}" if entry.get("repeat") else ""
+    return f"timer?id={entry['id']}&at={entry['at']}&l={quote(entry['label'] or 'Temporizador', safe='')}{repeat}"
+
+
+WEEKDAY_NUMBERS = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3, "viernes": 4, "sabado": 5, "domingo": 6}
+WEEKDAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+REPEAT_RE = re.compile(r"\b(?:todos los dias|cada dia|diariamente|todas las semanas|cada semana|semanalmente|"
+                       r"todos los (?P<w1>lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)|"
+                       r"cada (?P<w2>lunes|martes|miercoles|jueves|viernes|sabado|domingo))\b")
+
+
+def parse_repeat(sentence):
+    """('todos los lunes a las 8') -> (seconds between rings, weekday number or None, span) or None."""
+    text = plain_text(sentence)
+    match = REPEAT_RE.search(text)
+    if not match:
+        return None
+    word = match.group("w1") or match.group("w2")
+    if word:
+        return 604800, WEEKDAY_NUMBERS[word if word in WEEKDAY_NUMBERS else word[:-1]], match.span()
+    if "semana" in match.group(0):
+        return 604800, None, match.span()
+    return 86400, None, match.span()
 
 
 # --------------------------------------------------------------------------------- skills
@@ -249,11 +282,21 @@ def skill_timers(_text):
         intro = "Tienes una cosa programada" if count == 1 else f"Tienes {count} cosas programadas"
         return f"{intro}. " + "; ".join(parts) + ".", "rows?kind=timers"
 
-    # A clock time, "a las 6:30": an alarm
+    # A clock time, "a las 6:30": an alarm, or a repeating one ("todos los días a las 6:30")
     if clock and not seconds:
         when, span = clock
-        label = extract_label(original, [span])
-        entry = add_entry(when.timestamp(), label or "Alarma", "alarm")
+        repeat = parse_repeat(original)
+        spans = [span] + ([repeat[2]] if repeat else [])
+        label = extract_label(original, spans)
+        if repeat and repeat[1] is not None:  # "todos los lunes": the next one of that weekday
+            when += timedelta(days=(repeat[1] - when.weekday()) % 7)
+            if when <= extras.datetime.now(extras.COLOMBIA):
+                when += timedelta(days=7)
+        entry = add_entry(when.timestamp(), label or "Alarma", "reminder" if label else "alarm", repeat[0] if repeat else 0)
+        if repeat:
+            how = "todos los días" if repeat[0] == 86400 else f"todos los {WEEKDAY_NAMES[when.weekday()]}"
+            start = f"te recordaré {label} " if label else "te despierto "
+            return f"Listo, {start}{how} a {clock_words(when.hour, when.minute)}.", board_action(entry)
         day = "mañana " if when.date() != extras.datetime.now(extras.COLOMBIA).date() else ""
         start = f"te recordaré {label} " if label else "te despierto "
         return f"Listo, {start}{day}a {clock_words(when.hour, when.minute)}.", board_action(entry)
@@ -275,7 +318,8 @@ def rows_timers():
     for entry in active_entries()[:4]:
         when = datetime.fromtimestamp(entry["at"], extras.COLOMBIA)
         rows.append({"label": entry["label"] or "Temporizador",
-                     "note": f"suena a las {when.hour % 12 or 12}:{when.minute:02d} {'am' if when.hour < 12 else 'pm'}",
+                     "note": ("cada día · " if entry.get("repeat") == 86400 else "cada semana · " if entry.get("repeat") else "") +
+                             f"suena a las {when.hour % 12 or 12}:{when.minute:02d} {'am' if when.hour < 12 else 'pm'}",
                      "value": short_remaining(entry["at"] - now), "change": "", "trend": "flat"})
     return {"type": "rows", "title": "Temporizadores y alarmas", "rows": rows,
             "footer": "La placa los guarda y suena aunque el PC esté apagado"}

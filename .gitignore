@@ -38,3 +38,6 @@ server/timers.json
 server/calendar_sources.txt
 server/test_data/
 server/reading_state.json
+server/mail_accounts.json
+server/lists.json
+server/favorites.json

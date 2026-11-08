@@ -25,6 +25,11 @@ bool music_wanted(void);
 // Loudness of the audio now playing, from 0 to 1, for the equalizer.
 float music_level(void);
 
+// Sleep timer: the music turns itself off after this many seconds (0 cancels). The main loop asks
+// music_sleep_expired() and, when it says true (once), stops the music.
+void music_sleep_in(int seconds);
+bool music_sleep_expired(void);
+
 // Name of the song now playing from the PC's library (empty for radio). The serial number goes up
 // whenever a new song starts, so a screen knows when to redraw.
 const char *music_track_title(void);

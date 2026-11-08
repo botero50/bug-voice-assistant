@@ -188,6 +188,45 @@ void ui_voice_banner(const char *text, lv_color_t color) {
     }
 }
 
+static lv_obj_t *notice_box = NULL;
+static lv_timer_t *notice_timer = NULL;
+
+static void notice_hide_cb(lv_timer_t *t) {
+    if (notice_box) {
+        lv_obj_add_flag(notice_box, LV_OBJ_FLAG_HIDDEN);
+    }
+    notice_timer = NULL;  // LVGL deletes a timer with repeat count 1 after this runs
+}
+
+void ui_notice(const char *text, lv_color_t color, uint32_t ms) {
+    lv_obj_t *layer = lv_layer_top();
+    if (!notice_box) {
+        notice_box = lv_obj_create(layer);
+        lv_obj_remove_style_all(notice_box);
+        lv_obj_set_size(notice_box, 250, 40);
+        lv_obj_set_style_radius(notice_box, 20, 0);
+        lv_obj_set_style_bg_color(notice_box, lv_color_make(30, 30, 30), 0);
+        lv_obj_set_style_bg_opa(notice_box, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(notice_box, 2, 0);
+        lv_obj_clear_flag(notice_box, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(notice_box, LV_ALIGN_BOTTOM_MID, 0, -66);
+        lv_obj_t *label = lv_label_create(notice_box);
+        lv_obj_set_style_text_font(label, font_small, 0);
+        lv_obj_center(label);
+    }
+    lv_obj_t *label = lv_obj_get_child(notice_box, 0);
+    lv_label_set_text(label, text);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_border_color(notice_box, color, 0);
+    lv_obj_center(label);
+    lv_obj_clear_flag(notice_box, LV_OBJ_FLAG_HIDDEN);
+    if (notice_timer) {
+        lv_timer_del(notice_timer);
+    }
+    notice_timer = lv_timer_create(notice_hide_cb, ms, NULL);
+    lv_timer_set_repeat_count(notice_timer, 1);
+}
+
 void ui_mute_mic(bool muted) {
     ui_ctx.mic_muted = muted;
 }

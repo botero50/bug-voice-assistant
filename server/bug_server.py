@@ -6,25 +6,31 @@ header plus, for replies, 16 kHz PCM it can play directly.
 import asyncio
 import difflib
 import functools
+import json
 import logging
 import os
 import re
 import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import quote
 
 import numpy as np
 import requests
 from flask import Flask, Response, jsonify, request
 
+import daily
 import extras
 import books as books_module
 import calendar_ics
 import library
+import mail_imap
+import personal
 import radio
 import sample_data
 import timers
+import trivia
 from location import DEFAULT_CITY, current_place, forget_place, geocode, get_json, save_place
 from text_utils import normalize
 
@@ -117,14 +123,28 @@ def skill_date(_text):
 
 
 # ------------------------------------------------------- skills with their own screen
+def mailbox():
+    """The newest emails: from the real mailboxes when mail_accounts.json exists, else the samples."""
+    if mail_imap.configured():
+        try:
+            mails = mail_imap.newest()
+            if mails:
+                return mails
+        except Exception as error:
+            log.warning("Email failed: %s", error)
+    return sample_data.EMAILS
+
+
 def email_screen():
-    unread = sum(1 for email in sample_data.EMAILS if email["unread"])
-    return {"type": "email_list", "sample": True, "unread": unread, "items": sample_data.EMAILS}
+    mails = mailbox()
+    unread = sum(1 for email in mails if email["unread"])
+    return {"type": "email_list", "sample": mails is sample_data.EMAILS, "unread": unread, "items": mails}
 
 
 def email_detail_screen(index):
-    email = sample_data.EMAILS[index]
-    return {"type": "email_detail", "sample": True, **email}
+    mails = mailbox()
+    email = mails[min(index, len(mails) - 1)]
+    return {"type": "email_detail", "sample": mails is sample_data.EMAILS, **email}
 
 
 def day_events(offset):
@@ -154,7 +174,7 @@ def calendar_screen():
 
 
 def skill_email_list(_text):
-    unread = [e for e in sample_data.EMAILS if e["unread"]]
+    unread = [e for e in mailbox() if e["unread"]]
     if not unread:
         return "No tienes correos sin leer.", "email"
     newest = unread[0]
@@ -175,9 +195,10 @@ def skill_email_read(text):
         if word in ORDINALS:
             index = ORDINALS[word]
             break
-    if index >= len(sample_data.EMAILS):
-        return f"Solo tienes {len(sample_data.EMAILS)} correos.", "email"
-    email = sample_data.EMAILS[index]
+    mails = mailbox()
+    if index >= len(mails):
+        return f"Solo tienes {len(mails)} correos.", "email"
+    email = mails[index]
     return (f"Correo de {email['from']}. Asunto: {email['subject']}. {email['body']}",
             f"email_detail?i={index}")
 
@@ -484,6 +505,169 @@ def skill_music_stop(_text):
     return "Listo, apagué la música.", "music_stop"
 
 
+def skill_music_sleep(_text):
+    """'apaga la música en 30 minutos': the board turns the music off when the time comes."""
+    seconds, _ = timers.parse_duration(ORIGINAL_TEXT.get("text", ""))
+    if not seconds:
+        return "¿En cuánto tiempo? Dime por ejemplo: apaga la música en 30 minutos.", None
+    seconds = min(seconds, 12 * 3600)
+    return f"Listo, apago la música en {timers.duration_text(seconds)}.", f"music_sleep?s={seconds}"
+
+
+def skill_firmware_update(_text):
+    return "Voy a buscar una actualización del firmware.", "ota?check"
+
+
+def skill_triqui(_text):
+    return "Juguemos al triqui. Tú eres la equis, toca una casilla.", "triqui?cmd=new"
+
+
+def skill_stopwatch(text):
+    """The board keeps the stopwatch; the server only says what to do with it."""
+    if re.search(r"\b(reinicia\w*|resetea\w*|reset|en cero|a cero|borra\w*|limpia\w*)\b", text):
+        return "Listo, cronómetro en cero.", "stopwatch?cmd=reset"
+    if re.search(r"\b(para|parar|deten\w*|pausa\w*|frena\w*|congela\w*)\b", text):
+        return "Cronómetro detenido.", "stopwatch?cmd=pause"
+    return "Cronómetro en marcha.", "stopwatch?cmd=start"
+
+
+# ------------------------------------------------------------------ radio favourites
+FAVORITES_FILE = Path(__file__).with_name("favorites.json")
+
+
+def load_favorites():
+    try:
+        return json.loads(FAVORITES_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def save_favorites(items):
+    FAVORITES_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def current_station():
+    stations = RADIO_STATE["stations"]
+    return stations[RADIO_STATE["index"]] if stations else None
+
+
+def skill_fav_add(_text):
+    station = current_station()
+    if not station:
+        return "No hay una emisora sonando. Pon una y luego dime: guarda esta emisora.", None
+    favorites = load_favorites()
+    if any(f["id"] == station["id"] for f in favorites):
+        return f"{station['name']} ya está en tus favoritas.", None
+    save_favorites(favorites + [{"id": station["id"], "name": station["name"]}])
+    return f"Listo, guardé {station['name']} en tus favoritas.", None
+
+
+def skill_fav_remove(_text):
+    station = current_station()
+    favorites = load_favorites()
+    target = station["id"] if station else None
+    kept = [f for f in favorites if f["id"] != target]
+    if not station or len(kept) == len(favorites):
+        return "Esa emisora no está en tus favoritas.", None
+    save_favorites(kept)
+    return f"Listo, quité {station['name']} de tus favoritas.", None
+
+
+def skill_fav_play(_text):
+    stations = []
+    for fav in load_favorites():
+        try:
+            station = radio.station_by_id(fav["id"])
+        except Exception as error:
+            log.warning("Favourite %s failed: %s", fav["name"], error)
+            continue
+        if station:
+            stations.append(station)
+    if not stations:
+        return "Todavía no tienes emisoras favoritas. Pon una y dime: guarda esta emisora.", None
+    RADIO_STATE.update(stations=stations, index=0)
+    answer, screen, _ = start_station(stations[0])
+    return answer, screen
+
+
+def skill_fav_list(_text):
+    favorites = load_favorites()
+    if not favorites:
+        return "Todavía no tienes emisoras favoritas.", None
+    names = ", ".join(f["name"] for f in favorites[:5])
+    return f"Tus emisoras favoritas son: {names}.", "rows?kind=favorites"
+
+
+def rows_favorites():
+    favorites = load_favorites()
+    rows = [{"label": f["name"], "note": "", "value": "", "change": "", "trend": "flat"} for f in favorites[:5]]
+    footer = f"y {len(favorites) - 5} más" if len(favorites) > 5 else "Dime: pon mis favoritas"
+    return {"type": "rows", "title": "Emisoras favoritas", "rows": rows, "footer": footer}
+
+
+extras.ROWS_BUILDERS["favorites"] = rows_favorites
+
+
+# ------------------------------------------------------------------ the morning briefing
+def briefing_data():
+    now = datetime.now(COLOMBIA)
+    data = {"now": now, "weather": None, "events": [], "unread": 0}
+    try:
+        data["weather"] = fetch_weather("")
+    except Exception as error:
+        log.warning("Briefing weather failed: %s", error)
+    try:
+        data["events"] = day_events(0)
+    except Exception as error:
+        log.warning("Briefing calendar failed: %s", error)
+    try:
+        data["unread"] = sum(1 for m in mailbox() if m["unread"])
+    except Exception as error:
+        log.warning("Briefing mail failed: %s", error)
+    return data
+
+
+def skill_briefing(_text):
+    data = briefing_data()
+    now, weather, events, unread = data["now"], data["weather"], data["events"], data["unread"]
+    greeting = "Buenos días" if now.hour < 12 else ("Buenas tardes" if now.hour < 19 else "Buenas noches")
+    words = clock_words(now.hour, now.minute)
+    spoken = [f"{greeting}. {'Es' if words.startswith('la ') else 'Son'} {words}, "
+              f"{DAYS[now.weekday()]} {now.day} de {MONTHS[now.month - 1]}."]
+    if weather:
+        spoken.append(f"Afuera hay {weather['temp']} grados y {weather['text'].lower()}, con máxima de "
+                      f"{weather['high']} y mínima de {weather['low']}.")
+    if events:
+        first = events[0]
+        count = len(events)
+        spoken.append(f"Hoy tienes {'un evento' if count == 1 else f'{count} eventos'}. El primero: "
+                      f"{event_time_words(first)}, {first['title']}." if not first["all_day"] else
+                      f"Hoy tienes {'un evento' if count == 1 else f'{count} eventos'}: {first['title']}.")
+    else:
+        spoken.append("Hoy no tienes eventos.")
+    spoken.append("No tienes correos sin leer." if not unread else
+                  f"Tienes {'un correo' if unread == 1 else f'{unread} correos'} sin leer.")
+    return " ".join(spoken), "rows?kind=briefing"
+
+
+def rows_briefing():
+    data = briefing_data()
+    now, weather, events, unread = data["now"], data["weather"], data["events"], data["unread"]
+    rows = [{"label": f"{DAYS[now.weekday()].capitalize()} {now.day}", "note": MONTHS[now.month - 1],
+             "value": clock_display(now.hour, now.minute), "change": "", "trend": "flat"}]
+    if weather:
+        rows.append({"label": weather["city"], "note": f"{weather['text']} · {weather['low']}° a {weather['high']}°",
+                     "value": f"{weather['temp']}°", "change": "", "trend": "flat"})
+    rows.append({"label": "Agenda de hoy",
+                 "note": (events[0]["title"] if events else "Sin eventos")[:34],
+                 "value": str(len(events)), "change": "", "trend": "flat"})
+    rows.append({"label": "Correos sin leer", "note": "", "value": str(unread), "change": "", "trend": "flat"})
+    return {"type": "rows", "title": "Tu resumen", "rows": rows, "footer": f"Actualizado {clock_display(now.hour, now.minute)}"}
+
+
+extras.ROWS_BUILDERS["briefing"] = rows_briefing
+
+
 TENS = {"diez": 10, "veinte": 20, "treinta": 30, "cuarenta": 40, "cincuenta": 50, "sesenta": 60, "setenta": 70,
         "ochenta": 80, "noventa": 90, "cien": 100}
 VOLUME_NUMBER = r"\d{1,3}|" + "|".join(TENS)
@@ -524,12 +708,13 @@ SCREENS = {
     "music": music_screen,
     "weather": lambda args: fetch_weather(args.get("q", "").replace("-", " ")),
     "email": lambda args: email_screen(),
-    "email_detail": lambda args: email_detail_screen(max(0, min(int(args.get("i", 0)), len(sample_data.EMAILS) - 1))),
+    "email_detail": lambda args: email_detail_screen(max(0, min(int(args.get("i", 0)), len(mailbox()) - 1))),
     "calendar": lambda args: calendar_screen(),
 }
 
 # Order matters: the first pattern that matches wins.
 SKILLS = [
+    *trivia.SKILLS,  # an answer only counts while a question is open; otherwise these step aside
     # "cierra la música" is a music command, not "go Home"
     (re.compile(r"^(?!.*\b(musica|radio|emisora|cancion)\b).*\b(inicio|cierra|cerrar|volver|vuelve|atras|salir)\b"), skill_home),
     # Books come before email, so "lee el libro" never reaches "lee el primero"
@@ -541,6 +726,22 @@ SKILLS = [
      skill_email_read),
     (re.compile(r"\b(correos?|emails?|e mails?|mails?|mensajes|bandeja)\b"), skill_email_list),
     (re.compile(r"\b(calendario|agenda|reuniones?|citas?|eventos?)\b|\bque tengo (hoy|manana)\b"), skill_calendar),
+    # Morning briefing, lists, radio favourites and the music sleep timer come before the timers,
+    # whose words ("temporizador", "recuérdame") would otherwise claim some of these sentences
+    (re.compile(r"\b(buenos dias|buen dia)\b|\b(resumen|que hay para hoy|como (va|amanecio) el dia)\b"),
+     skill_briefing),
+    (re.compile(r"\b(actualiza\w*|busca\w*|instala\w*)\b.*\b(firmware|actualizacion\w*|version)\b|\bactualizate\b"), skill_firmware_update),
+    (re.compile(r"\bcronometro\b"), skill_stopwatch),
+    (re.compile(r"\b(triqui|tres en raya|tres en linea|ta te ti)\b|\bjuguemos\b|\bjugar\b.*\bgato\b"), skill_triqui),
+    *personal.SKILLS,
+    (re.compile(r"\b(quita\w*|borra\w*|elimina\w*|saca\w*)\b.*\bfavorit\w*"), skill_fav_remove),
+    (re.compile(r"\b(pon|ponme|poner|toca|reproduce|escuchar|oir|abre)\b.*\bfavorit\w*"), skill_fav_play),
+    (re.compile(r"\b(cuales|que|muestra\w*|dime|lista)\b.*\bfavorit\w*"), skill_fav_list),
+    (re.compile(r"\b(guarda\w*|agrega\w*|anade\w*|marca\w*)\b.*\b(emisora|radio|estacion|favorit\w*)\b|\bme gusta (esta|la) (emisora|radio)\b"),
+     skill_fav_add),
+    (re.compile(r"\b(apaga\w*|para|parar|deten\w*|quita\w*|pausa\w*)\b.*\b(musica|radio|emisora|cancion)\b.*\b(minutos?|horas?|media hora)\b|"
+                r"\b(temporizador|timer) de (sueno|dormir)\b|\bme voy a dormir\b"), skill_music_sleep),
+    *daily.SKILLS,
     *timers.SKILLS,
     # The city comes before weather, so "cambia la ciudad a Cali" isn't read as a weather question
     (re.compile(r"\b(detect\w*|usa|usar)\b.*\b(ciudad|ubicacion)\b"), skill_auto_city),
@@ -590,6 +791,8 @@ def run_skill(text):
     for pattern, skill in SKILLS:
         if pattern.search(cleaned):
             result = skill(cleaned)
+            if result is None:  # the skill looked and decided the sentence isn't for it
+                continue
             return result if isinstance(result, tuple) else (result, None)
     return FALLBACK, None
 
@@ -651,7 +854,11 @@ def transcribe(pcm):
         # The words Bug expects: Whisper spells them right far more often when it has seen them first
         initial_prompt=("Hola Bug. Hey Bug. ¿Qué hora es? Pon salsa. Pon Tropicana. Pon Olímpica Stereo. Cambia de emisora. "
                         "Sube el volumen. Baja el volumen. Para la música. Muéstrame los correos. Lee el primero. "
-                        "¿Qué tengo en el calendario? ¿Cómo está el clima en Cali? Cambia la ciudad a Medellín."),
+                        "¿Qué tengo en el calendario? ¿Cómo está el clima en Cali? Cambia la ciudad a Medellín. "
+                        "Pon mi música. Siguiente canción. Pon un temporizador de 10 minutos. Despiértame a las 6 y media. "
+                        "Inicia el cronómetro. Juguemos al triqui. Juguemos trivia. Agrega leche a la lista de compras. "
+                        "Anota que mañana hay reunión. Buenos días. Guarda esta emisora en favoritas. Lee el libro. "
+                        "Sigue leyendo. Apaga la música en 30 minutos. ¿Cuánto es 25 más 17? Convierte 5 millas a kilómetros."),
     )
     return " ".join(s.text.strip() for s in segments).strip()
 

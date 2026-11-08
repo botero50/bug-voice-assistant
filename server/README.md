@@ -1,5 +1,8 @@
 # Bug voice server
 
+Step-by-step configuration of everything (server, board, music, books, calendar, email) is in
+[`SETUP.md`](../SETUP.md).
+
 Runs on your PC. The board sends it what it hears; it listens for "Hola Bug" /
 "Hey Bug", runs the skill and sends back the answer spoken by Salomé
 (`es-CO-SalomeNeural`), plus the data for the screen the answer opens.

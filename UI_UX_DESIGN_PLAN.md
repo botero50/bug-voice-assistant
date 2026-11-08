@@ -436,6 +436,41 @@ Opened by voice: "¿cómo está el clima?", "¿va a llover?", "¿qué clima hace
 
 Bug also says the temperature, the range and the chance of rain aloud. Swipe up to go back Home.
 
+### 6.0f Briefing, lists, favourites, sleep timer, stopwatch, repeats, error notices (built)
+
+| Say | What happens |
+|---|---|
+| "Buenos días" | Reads time and date, weather, today's events and unread mail; the list screen "Tu resumen" shows the same |
+| "Agrega leche y huevos a la lista de compras", "qué hay en mi lista", "quita la leche de la lista", "borra la lista" | Shopping list, kept in `server/lists.json` |
+| "Anota que mañana hay reunión", "mis notas", "borra las notas" | Notes, same file |
+| "Guarda esta emisora en favoritas", "pon mis favoritas", "quita esta emisora de favoritas" | Radio favourites in `server/favorites.json`; "otra emisora" cycles through them |
+| "Apaga la música en 30 minutos" | The board turns the music off by itself |
+| "Inicia el cronómetro", "para el cronómetro", "reinicia el cronómetro" | Stopwatch screen with big time and two buttons; keeps counting after you leave the screen |
+| "Cuándo es el próximo festivo", "mañana es festivo" | Colombian public holidays (computed, incl. the moved-to-Monday rule) on the list screen |
+| "Cuántos días faltan para Navidad" (or "el 20 de julio", Año Nuevo, Halloween...) | Days until that date |
+| "A qué hora se oculta el sol" | Sunrise and sunset in your city |
+| "Cómo se dice casa en inglés", "traduce buenos días al francés" | Translation (English, French, Portuguese, German, Italian) on the Article screen |
+| "Juguemos trivia", "la B" (or the answer), "otra pregunta", "cuántos puntos llevo" | 30 questions with three options on the Article screen; the score is kept until the server restarts |
+| "Busca una actualización del firmware" | The board checks the installer page, and if its version is newer it downloads it (progress shows above the battery) and restarts; if the new firmware does not start properly the old one returns |
+| "Juguemos al triqui" | Tic-tac-toe on the display: you are X and tap a square, Bug plays O (it slips now and then, so you can win); tap the board for a new game |
+| "Despiértame todos los días a las 6 y media", "avísame todos los lunes a las 8 sacar la basura" | Repeating alarms and reminders, stored on the board; they ring again by themselves |
+
+Home in standby shows the next alarm or timer above "Di Hola Bug", with the time left.
+Error notices: "Batería baja · conecta el cargador" at 15% and "Batería casi vacía" at 5% (not charging),
+a red ring with "No oigo el micrófono" when the microphone stops delivering audio, "Sin WiFi" handling
+that waits for the router to come back, and "No encuentro el servidor. ¿Está encendido el PC?".
+The first time this firmware runs, alarms saved by an older version are cleared (their storage format changed).
+
+### 6.0b-4 Real email over IMAP (built, needs your account)
+
+The Email screens show your real newest 4 messages (all mailboxes together) when
+`server/mail_accounts.json` exists (never committed):
+`[{"name": "Gmail", "host": "imap.gmail.com", "user": "you@gmail.com", "password": "<app password>"}]`.
+Gmail needs 2-step verification and an App password (Google Account > Security). Outlook/Microsoft 365
+uses host `outlook.office365.com`, but many work accounts have password sign-in turned off by the
+administrator; those need OAuth, which is not built. Messages are only peeked, never marked read.
+The "Datos de ejemplo" note disappears when real mail shows. Without the file the samples stay.
+
 ### 6.0b-3 Calendar from ICS links, book reader, volume by number (built)
 
 **Calendar.** The Calendar screen is unchanged; its events now come from your real calendars when
@@ -734,17 +769,37 @@ Status as of 2026-11-07. Every phase is flashed to the board and tested by the o
 | 8 | **Email** list and detail, **Calendar** agenda (sample data until accounts connect) | Done |
 | 9 | **Weather** screen (real data) | Done |
 | 9b | **Music** screen (internet radio), volume by voice, the user's city | Done |
-| 9c | Music: your own MP3 files, stereo and better sound, song titles | Later |
+| 9c | Music: stereo and better sound (the speaker path is 16 kHz mono today) | Later |
 | 10 | Crypto and dollar prices, news, Wikipedia answers, jokes, math and conversions, this PC's status | Done |
 | 10b | Timers, alarms and reminders (the board keeps them and rings even with the PC off) | Done (alarm sound and auto-close fixed) |
-| 10c | Music from your own files on this PC | Built, waiting for your test |
-| 10d | Real calendar from ICS links (built, needs your links) and email (OAuth sign-in) for the Google and Outlook work accounts | Calendar built, email later |
-| 10e | Book reader (txt and epub, one page at a time) | Built, waiting for your test |
-| 10f | Volume by number ("volumen al 50") | Built |
-| 10f | Story generator and open questions (needs a Claude API key) | Waiting for a key |
-| 11 | Connect real Google and Outlook mail and calendar | Later |
-| 12 | Error screens (low battery, mic fault), power profiles | Later |
-| 13 | Accessibility testing, animation polish, performance | Later |
+| 10c | Music from your own files on this PC, with song titles | Done |
+| 10d | Real calendar from ICS links and email over IMAP (steps in SETUP.md) | Built, you configure it when development ends |
+| 10e | Book reader (txt and epub, one page at a time) | Done |
+| 10f | Volume by number ("volumen al 50") | Done |
+| 11 | OAuth sign-in for work mailboxes whose administrator blocks passwords | Later (needs you to register an app) |
+| 12 | Error screens (low battery, mic fault, Wi-Fi lost, no server) | Built, waiting for your test (power profiles later) |
+| 13 | Screen power saving: dims to one sixth after 10 s without touch or voice, switches off after 20 s; touch, "Hola Bug", the ring tap or an alarm wakes it (the touch that wakes it is not also a tap). It stays on while Bug is listening or answering | Built |
+| 13b | Accessibility testing, animation polish, performance | Later |
+
+### Backlog: planned but not built yet
+
+Nothing here needs a Claude key unless marked.
+
+| Id | Item | Needs | Status |
+|----|------|-------|--------|
+| B1 | Home screen shows the next alarm or timer and counts down | nothing | Built |
+| B2 | Morning briefing: "buenos días" reads time, weather, today's events, unread mail | nothing | Built |
+| B3 | Radio favourites ("guarda esta emisora", "pon mis favoritas") | nothing | Built |
+| B4 | Quick games: tic-tac-toe (triqui) on the display, trivia by voice; 2048 not built (it needs swipes, which are used for navigation) | nothing | Built |
+| B5 | Sleep timer for music ("apaga la música en 30 minutos") | nothing | Built |
+| B6 | Reminders that repeat (every day, every Monday) | nothing | Built |
+| B7 | Notes and shopping list by voice, shown on a screen and kept on the PC | nothing | Built |
+| B8 | Stopwatch screen ("inicia el cronómetro") | nothing | Built |
+| B9 | Smart home (lights, thermostat) | your devices and their accounts | Not built |
+| B10 | Speaker identification for several users | nothing, but needs a test with each person | Not built |
+| B11 | Offline fallback: timers, alarms, stopwatch and mute work without the server; the board's clock chip (PCF85063) keeps the time through restarts and power loss | nothing | Built |
+| B12 | Updating firmware over Wi-Fi: "busca una actualización del firmware" (checks the installer page, downloads if newer, restarts; rolls back if the new one fails) | nothing | Built (works from the first version you publish after 0.5.0) |
+| B13 | Free conversation, stories, email summaries and answers to open questions | Claude API key | Not built |
 
 ---
 

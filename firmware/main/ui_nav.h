@@ -19,6 +19,8 @@ typedef enum {
     UI_SCREEN_HISTORY,
     UI_SCREEN_WIFI,
     UI_SCREEN_TEXT_ENTRY,
+    UI_SCREEN_STOPWATCH,     // opened by voice: "inicia el cronómetro"
+    UI_SCREEN_TRIQUI,        // opened by voice: "juguemos al triqui"
 } ui_screen_id_t;
 
 // Screens are opened by voice (the server names the screen and sends its data).
@@ -52,6 +54,9 @@ void ui_nav_tick(void);
 
 // Resets that minute, e.g. while the user is talking to Bug.
 void ui_nav_keep_alive(void);
+
+// Treats the touch happening right now as a gesture, not a tap (used when a touch wakes the screen).
+void ui_nav_swallow_touch(void);
 
 // False for a moment after a swipe, so lifting the finger isn't also a tap.
 bool ui_nav_click_allowed(void);

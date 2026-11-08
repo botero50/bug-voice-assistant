@@ -94,6 +94,37 @@ CASES = [
     ("Tira una moneda", "command", "reply", None, "coin", "Salió"),
     ("Convierte 5 millas a kilómetros", "command", "reply", None, "unit conversion", "8,05"),
     ("¿Cómo está mi computador?", "command", "reply", "rows?kind=pc", "this PC's status", "procesador"),
+    ("Buenos días", "command", "reply", "rows?kind=briefing", "morning briefing", "Hoy"),
+    ("Agrega leche y huevos a la lista de compras", "command", "reply", "rows?kind=compras", "adds to the shopping list", "leche"),
+    ("Agrega pan a la lista de compras", "command", "reply", "rows?kind=compras", "adds a third item", "pan"),
+    ("¿Qué hay en mi lista de compras?", "command", "reply", "rows?kind=compras", "reads the list", "huevos"),
+    ("Quita la leche de la lista", "command", "reply", "rows?kind=compras", "removes an item", "leche"),
+    ("Borra la lista de compras", "command", "reply", None, "clears the list", "borré"),
+    ("Anota que mañana hay reunión", "command", "reply", "rows?kind=notas", "adds a note", "reunión"),
+    ("Mis notas", "command", "reply", "rows?kind=notas", "reads the notes", "reunión"),
+    ("Borra las notas", "command", "reply", None, "clears the notes", "borré"),
+    ("Pon salsa", "command", "reply", "music?id=*", "a station to save as a favourite"),
+    ("Guarda esta emisora en favoritas", "command", "reply", None, "saves the favourite", "guardé"),
+    ("Pon mis favoritas", "command", "reply", "music?id=*", "plays the favourites"),
+    ("Quita esta emisora de las favoritas", "command", "reply", None, "removes the favourite", "quité"),
+    ("Apaga la música en 30 minutos", "command", "reply", "music_sleep?s=1800", "music sleep timer", "30 minutos"),
+    ("Para la música", "command", "reply", "music_stop", "stops the radio again"),
+    ("Recuérdame todos los días a las 8 de la mañana tomar la pastilla", "command", "reply", "timer?id=*", "a daily reminder", "todos los días"),
+    ("Despiértame todos los lunes a las 6 y media", "command", "reply", "timer?id=*", "a weekly alarm", "todos los lunes"),
+    ("Cancela las alarmas", "command", "reply", "timer_cancel?ids=*", "cancels repeating alarms too", "cancel"),
+    ("Cancela los recordatorios", "command", "reply", "timer_cancel?ids=*", "cancels repeating reminders", "cancel"),
+    ("Juguemos al triqui", "command", "reply", "triqui?cmd=new", "opens the tic-tac-toe game", "triqui"),
+    ("Juguemos trivia", "command", "reply", "article", "starts trivia with a question", "Juguemos trivia"),
+    ("La opción B", "command", "reply", "article", "answers a trivia question", "Llevas"),
+    ("Otra pregunta", "command", "reply", "article", "asks the next question"),
+    ("Busca una actualización del firmware", "command", "reply", "ota?check", "firmware update by voice", "actualización"),
+    ("¿Cuándo es el próximo festivo?", "command", "reply", "rows?kind=holidays", "next Colombian holiday", "festivo"),
+    ("¿Cuántos días faltan para Navidad?", "command", "reply", None, "days until Christmas", "Navidad"),
+    ("¿A qué hora se oculta el sol?", "command", "reply", None, "sunset time", "sol"),
+    ("¿Cómo se dice casa en inglés?", "command", "reply", "article", "translation", "house"),
+    ("Inicia el cronómetro", "command", "reply", "stopwatch?cmd=start", "starts the stopwatch", "marcha"),
+    ("Para el cronómetro", "command", "reply", "stopwatch?cmd=pause", "pauses the stopwatch", "detenido"),
+    ("Reinicia el cronómetro", "command", "reply", "stopwatch?cmd=reset", "resets the stopwatch", "cero"),
     ("Pon un temporizador de 10 minutos", "command", "reply", "timer?id=*", "a timer", "10 minutos"),
     ("Despiértame a las 6 y media de la mañana", "command", "reply", "timer?id=*", "an alarm", "6 y media"),
     ("Recuérdame en 20 minutos llamar a Ana", "command", "reply", "timer?id=*", "a reminder", "llamar a Ana"),
@@ -110,7 +141,7 @@ def check_screen_data():
                            ("weather?q=medellin", "weather"), ("rows?kind=crypto", "rows"),
                            ("rows?kind=dollar", "rows"), ("rows?kind=pc", "rows"), ("rows?kind=timers", "rows"),
                            ("headlines", "headlines"),
-                           ("article", "article")):
+                           ("article", "article"), ("rows?kind=holidays", "rows")):
         for attempt in range(2):  # a web service can hiccup right after the server restarts
             data = requests.get(f"{URL}/screen/{path}", timeout=20).json()
             if "error" not in data:
@@ -167,7 +198,7 @@ def main():
         sys.exit(f"Server is not running on {URL}: {error}")
 
     # The tests change the saved city and add timers. Put both back exactly as they were, even if a test fails.
-    personal_files = [Path(__file__).with_name(name) for name in ("user_settings.json", "timers.json")]
+    personal_files = [Path(__file__).with_name(name) for name in ("user_settings.json", "timers.json", "lists.json", "favorites.json", "reading_state.json")]
     previous = {f: f.read_text(encoding="utf-8") if f.exists() else None for f in personal_files}
     try:
         failures = run_cases()
