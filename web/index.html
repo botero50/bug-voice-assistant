@@ -76,6 +76,9 @@
     <label>Calendar link(s) (Google Calendar → Settings → "Secret address in iCal format"; several separated by ;)
       <input id="cfg-ics" autocomplete="off" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"></label>
 
+    <label>Dev bridge token (only for the developer tools: from <code>server/dev_token.txt</code> on your PC, or run <code>server/tools/pair_board.py</code>)
+      <input id="cfg-dev" type="password" autocomplete="off" placeholder="64 letters and numbers"></label>
+
     <label>PC address (only if you also run the Bug server; leave empty to find it automatically)
       <input id="cfg-server" autocomplete="off" placeholder="192.168.1.4"></label>
 
@@ -153,6 +156,7 @@
     }
     if (value('cfg-ics')) payload.ics = value('cfg-ics').replace(/^webcal:\/\//, 'https://');
     if (value('cfg-server')) payload.server = value('cfg-server');
+    if (value('cfg-dev')) payload.dev_token = value('cfg-dev');
     if (!Object.keys(payload).length) { show('Fill in at least one thing to send.', true); return; }
     const answer = await talk(payload);
     if (!answer) return;

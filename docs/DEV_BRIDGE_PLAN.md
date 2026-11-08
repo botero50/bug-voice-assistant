@@ -130,7 +130,7 @@ Claude Code / VS Code ──hooks & MCP "bug-dev" server────►  └─ 
 
 | Phase | Work | Done when |
 |---|---|---|
-| **0 Foundations** (about 1 day) | pairing token + request signing; `/dev/notify` + `/dev/events` (long poll); board toast + spoken notification; the `Stop`/`Notification` hooks for Claude Code; audit log | Claude Code finishes a task and the board says so |
+| **0 Foundations** — **built and tested** | pairing token + request signing; `/dev/notify` + `/dev/events` (long poll); board toast + spoken notification; the `Stop`/`Notification` hooks for Claude Code; audit log | Claude Code finishes a task and the board says so |
 | **1 Run and watch** | named actions file; `/dev/run`; JUnit / Playwright JSON parser; status card on the board; `gh` pipeline skills (#1, #2) | "corre las pruebas de humo" ends with a spoken result |
 | **2 Ask Claude** | `/dev/ask` with `claude -p`, project folders list, read-only tool list, session resume per project (#3, #9) | "pregúntale a Claude por qué falló el último test" is answered aloud |
 | **3 Eyes** | `/dev/screenshot` with `mss`, thumbnail screen on the board (raw RGB565, about 1 s), "qué ves" description, privacy rules (which monitor, never while a password manager is focused) (#4) | screenshot and description work |
@@ -159,3 +159,26 @@ Each phase ends with host tests (no hardware) and a written acceptance check, as
 4. **Which actions may the board run without asking you to tap?** My default: read-only ones run directly; anything that writes, pushes or restarts asks first.
 
 Until you answer, phases 0 to 3 can be built on the defaults above.
+
+---
+
+## 7. Phase 0 as built (how to use it)
+
+Files: `server/dev_bridge.py` (the three endpoints), `server/tools/pair_board.py`, `server/tools/bug_notify.py`,
+`server/tools/install_claude_hooks.py`, `firmware/main/dev_bridge.c`, and `server/dev_bridge_test.py` (14 checks, no hardware).
+
+1. **Pair once** (the token travels over the USB cable only): `python server/tools/pair_board.py` (or paste `server/dev_token.txt` into
+   "Dev bridge token" on the installer page's Set up the board). "What does the board have?" then shows `"dev": true`.
+2. **Send a message** from anything on the PC: `python server/tools/bug_notify.py --level ok "Las pruebas de humo pasaron"`. Levels: info (blue),
+   ok (green), warn (amber), error (red). `--quiet` shows it without saying it. The board shows it for 7 seconds and says it with the online voice.
+3. **Claude Code hooks:** `python server/tools/install_claude_hooks.py` shows what would be added to `~/.claude/settings.json`; `--apply` adds a
+   `Stop` hook ("Claude terminó en <project>") and a `Notification` hook ("Claude necesita tu permiso..."); `--remove` takes them out. They are
+   **not** applied for you, because they would speak on every turn of every Claude Code session.
+4. **Audit:** every request, allowed or refused, is a line in `server/dev_audit.log`.
+
+Tested on the board: the board connected with a signed request (its address appears in the audit log), a message sent from the PC reached it
+after a restart, and the online voice played it (`TTS: Online voice piece ... played`, the first time that path was heard working). Not tested:
+the hooks inside a real Claude Code session, and the speech quality.
+
+Design notes: the first time the board connects it ignores messages older than two minutes, so a restart does not replay yesterday's news; at most the
+newest five are delivered after the board was off; a message the screen has not shown yet when six are waiting is dropped.

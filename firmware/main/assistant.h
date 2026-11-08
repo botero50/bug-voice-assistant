@@ -43,6 +43,7 @@ bool assistant_take_screen(char *path, size_t path_size, char **json);
 
 // Call after the Wi-Fi settings changed so a waiting assistant tries again.
 void assistant_wifi_changed(void);
+void assistant_announce(const char *text);  // say a message from the development PC when idle
 void assistant_open_screen(const char *path);
 
 // Skips the wake word and listens for a command right now (tap on the ring).

@@ -45,6 +45,7 @@ static volatile float audio_level = 0;
 static volatile bool wifi_dirty = false;
 static volatile bool listen_now_request = false;
 static volatile bool muted = false;
+static volatile bool announce_pending = false;  // a message from the development PC is waiting to be said
 static volatile bool wake_listening = false;  // the on-board detector is fed with the microphone
 static volatile bool local_wake = false;       // it heard "Hola Bug"
 static bool skip_chime = false;
@@ -235,7 +236,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
         float rms = frame_rms(frame);
         threshold = fmaxf(noise_floor * NOISE_MULTIPLIER, MIN_THRESHOLD);
 
-        if (interruptible && (listen_now_request || local_wake || muted != muted_at_start || music_is_playing() != music_at_start)) {
+        if (interruptible && (listen_now_request || local_wake || announce_pending || muted != muted_at_start || music_is_playing() != music_at_start)) {
             return 0;
         }
 
@@ -310,6 +311,32 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
     }
     ESP_LOGI(TAG, "Recorded %.1f s, peak %d", (float)samples / SAMPLE_RATE, peak);
     return samples;
+}
+
+static char announce_text[160];
+
+// A message from the development PC (see dev_bridge.c): said as soon as the board is idle
+void assistant_announce(const char *text) {
+    strlcpy(announce_text, text, sizeof(announce_text));
+    announce_pending = true;
+}
+
+static void chime(void);
+
+static void say_announcement(void) {
+    char text[160];
+    strlcpy(text, announce_text, sizeof(text));
+    announce_pending = false;
+    if (muted) return;
+    music_pause_for_voice();
+    audio_set_speaker(true);
+    vTaskDelay(pdMS_TO_TICKS(30));
+    chime();
+    tts_say(text);  // needs internet; without it the chime and the text on the screen are all there is
+    vTaskDelay(pdMS_TO_TICKS(150));
+    audio_set_speaker(false);
+    audio_flush_input(300);
+    music_resume_after_voice();
 }
 
 static void chime(void) {
@@ -706,6 +733,7 @@ static void assistant_task(void *arg) {
 
     for (;;) {
         set_state(muted ? ASSISTANT_STATE_MUTED : (music_is_playing() ? ASSISTANT_STATE_MUSIC : ASSISTANT_STATE_STANDBY));
+        if (announce_pending) say_announcement();
         // When the PC does not answer, look for it by name every 30 seconds: its address may have changed
         static uint32_t last_find_ms = 0;
         uint32_t clock_ms = pdTICKS_TO_MS(xTaskGetTickCount());

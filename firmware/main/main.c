@@ -15,6 +15,7 @@
 #include "audio_driver.h"
 #include "alarms.h"
 #include "assistant.h"
+#include "dev_bridge.h"
 void config_serial_start(void);
 #include "music_player.h"
 #include "ota_update.h"
@@ -329,6 +330,7 @@ void app_main(void) {
 
     if (audio_ready) {
         config_serial_start();  // lets the installer page set the board up over USB
+        dev_bridge_start();     // messages from the development PC
         assistant_start();
     }
 
@@ -386,6 +388,18 @@ void app_main(void) {
                 voice_activity_ms = now;
                 ui_nav_open_screen(screen_path, screen_json);
                 heap_caps_free(screen_json);
+            }
+
+            {
+                char dev_text[140];
+                int dev_level;
+                bool dev_speak;
+                if (dev_bridge_take(dev_text, sizeof(dev_text), &dev_level, &dev_speak)) {
+                    lv_color_t color = dev_level == 1 ? COLOR_ACCENT_GREEN : dev_level == 2 ? lv_color_make(255, 170, 0) : dev_level == 3 ? COLOR_ACCENT_RED : COLOR_ACCENT_BLUE;
+                    ui_notice(dev_text, color, 7000);
+                    voice_activity_ms = now;  // wakes the screen
+                    if (dev_speak) assistant_announce(dev_text);
+                }
             }
 
             char ota_message[64];

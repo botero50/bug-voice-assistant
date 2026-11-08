@@ -170,6 +170,12 @@ its own memory and connects to the Wi-Fi by itself. **What does the board have?*
 **Forget everything** removes it. Nothing you type is uploaded: the page runs in your browser and talks only to the board.
 The same can be done any time, even long after installing, by opening the page again.
 
+## 8d. Developer bridge (the board tells you what happens on your PC)
+
+Optional. `docs/DEV_BRIDGE_PLAN.md` has the whole plan. To try the first part: `python server/tools/pair_board.py`, then
+`python server/tools/bug_notify.py --level ok "hola"`. To make Claude Code announce when it finishes:
+`python server/tools/install_claude_hooks.py --apply` (and `--remove` to undo).
+
 ## 9. Everything you can say
 
 Start with "Hola Bug" (or tap the ring), then:

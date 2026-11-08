@@ -2,6 +2,7 @@
 #include "cJSON.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
+#include "dev_bridge.h"
 #include "imu.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -67,6 +68,12 @@ static void apply(char *json_text) {
         strlcat(done, " screen", sizeof(done));
     }
 
+    const char *dev_token = text_of(root, "dev_token");
+    if (dev_token) {  // the pairing token of the development PC (an empty one removes the pairing)
+        dev_bridge_set_token(dev_token);
+        strlcat(done, dev_token[0] ? " dev-paired" : " dev-unpaired", sizeof(done));
+    }
+
     const char *ssid = text_of(root, "ssid");
     const char *pass = text_of(root, "pass");
     if (ssid && ssid[0]) {
@@ -99,8 +106,8 @@ static void apply(char *json_text) {
     if (cJSON_GetObjectItem(root, "status")) {
         char mail_user[64] = "";
         local_mail_user(mail_user, sizeof(mail_user));
-        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
-               local_calendar_configured() ? "true" : "false");
+        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
+               local_calendar_configured() ? "true" : "false", dev_bridge_paired() ? "true" : "false");
     } else {
         printf("BUGCFG OK%s\n", done[0] ? done : " nothing-to-change");
     }

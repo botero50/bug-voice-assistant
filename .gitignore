@@ -56,3 +56,7 @@ server/skills_test/local_more_host.c
 server/wake/*.raw
 server/wake/*.pt
 server/wake/*.exe
+
+# Dev bridge: the pairing token and the log of every request
+server/dev_token.txt
+server/dev_audit.log
