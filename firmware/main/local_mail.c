@@ -1,6 +1,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_tls.h"
 #include "local_skills_internal.h"
 #include "nvs.h"
@@ -10,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 
 // Email read by the board itself over IMAP (TLS, port 993): the newest messages with who sent them, the subject and
@@ -120,25 +123,46 @@ static int tls_send(esp_tls_t *tls, const char *text) {
 }
 
 // Reads until the line that ends the command (`tag` followed by OK, NO or BAD). Returns true on OK.
+static bool server_refused = false;  // the last answer was a clear NO or BAD (for example a wrong password), not a missing connection
+
+#define RESPONSE_DEADLINE_MS 15000  // no answer from the mail server may take longer than this (it used to wait without limit)
+
 static bool read_response(esp_tls_t *tls, const char *tag, char *buffer, size_t cap) {
     size_t used = 0;
+    int64_t deadline = esp_timer_get_time() / 1000 + RESPONSE_DEADLINE_MS;
     buffer[0] = '\0';
     char marker_ok[12], marker_no[12], marker_bad[12];
     snprintf(marker_ok, sizeof(marker_ok), "\r\n%s OK", tag);
     snprintf(marker_no, sizeof(marker_no), "\r\n%s NO", tag);
     snprintf(marker_bad, sizeof(marker_bad), "\r\n%s BAD", tag);
     for (int idle = 0; idle < 60 && used + 1 < cap;) {
+        if (esp_timer_get_time() / 1000 > deadline) {
+            ESP_LOGW(TAG, "The mail server did not finish answering %s in %d s (%u bytes so far)", tag, RESPONSE_DEADLINE_MS / 1000, (unsigned)used);
+            return false;
+        }
         int got = esp_tls_conn_read(tls, buffer + used, cap - used - 1);
         if (got == ESP_TLS_ERR_SSL_WANT_READ || got == ESP_TLS_ERR_SSL_WANT_WRITE) {
             idle++;
             continue;
         }
-        if (got <= 0) return false;
+        if (got <= 0) {
+            ESP_LOGW(TAG, "Reading the answer to %s failed (%d)", tag, got);
+            return false;
+        }
         used += (size_t)got;
         buffer[used] = '\0';
         // the tag can also start the very first line of the buffer
         if (strstr(buffer, marker_ok) || strncmp(buffer, marker_ok + 2, strlen(marker_ok) - 2) == 0) return true;
-        if (strstr(buffer, marker_no) || strstr(buffer, marker_bad)) return false;
+        if (strstr(buffer, marker_no) || strstr(buffer, marker_bad) || strncmp(buffer, marker_no + 2, strlen(marker_no) - 2) == 0 ||
+            strncmp(buffer, marker_bad + 2, strlen(marker_bad) - 2) == 0) {
+            char line[120];  // the server's own explanation (it never contains the password); kept to say why
+            strlcpy(line, strstr(buffer, tag) ? strstr(buffer, tag) : buffer, sizeof(line));
+            char *end = strpbrk(line, "\r\n");
+            if (end) *end = '\0';
+            ESP_LOGW(TAG, "The mail server said: %s", line);
+            server_refused = true;
+            return false;
+        }
     }
     return false;
 }
@@ -586,18 +610,30 @@ static bool decode_part(const char *headers, size_t hlen, const char *body, size
 
 // Connects, logs in and opens the inbox read-only. Returns the connection (and the number of messages in `total`) or NULL.
 static esp_tls_t *open_session(char *buffer, int *total) {
+    server_refused = false;
     esp_tls_cfg_t cfg = {.crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 12000};
     esp_tls_t *tls = esp_tls_init();
     if (!tls) return NULL;
+    ESP_LOGI(TAG, "Connecting to %s", account[0]);
     if (esp_tls_conn_new_sync(account[0], (int)strlen(account[0]), 993, &cfg, tls) <= 0) {
         ESP_LOGW(TAG, "Could not connect to %s", account[0]);
         esp_tls_conn_destroy(tls);
         return NULL;
     }
-    if (esp_tls_conn_read(tls, buffer, 200) <= 0) {  // the greeting
+    int fd = -1;
+    if (esp_tls_get_conn_sockfd(tls, &fd) == ESP_OK && fd >= 0) {  // a read that waits more than 5 s gives up instead of blocking the whole assistant
+        struct timeval limit = {.tv_sec = 5, .tv_usec = 0};
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &limit, sizeof(limit));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &limit, sizeof(limit));
+    }
+    ESP_LOGI(TAG, "Connected to %s, waiting for the greeting", account[0]);
+    int greeting = esp_tls_conn_read(tls, buffer, 200);
+    if (greeting <= 0) {  // the greeting
+        ESP_LOGW(TAG, "No greeting from the mail server (%d)", greeting);
         esp_tls_conn_destroy(tls);
         return NULL;
     }
+    ESP_LOGI(TAG, "Greeting received, logging in");
     // The user and password go inside quotes; a quote or backslash inside them is escaped
     char user[100], password[100], command[220];
     size_t u = 0, w = 0;
@@ -617,7 +653,9 @@ static esp_tls_t *open_session(char *buffer, int *total) {
         esp_tls_conn_destroy(tls);
         return NULL;
     }
+    ESP_LOGI(TAG, "Logged in, opening the inbox");
     if (tls_send(tls, "A2 EXAMINE INBOX\r\n") || !read_response(tls, "A2", buffer, BUFFER_BYTES)) {
+        ESP_LOGW(TAG, "The inbox could not be opened");
         esp_tls_conn_destroy(tls);
         return NULL;
     }
@@ -737,6 +775,11 @@ bool local_mail_try(const char *text, local_answer_t *a) {
         else if (has(text, "tercer") || has(text, "tercero") || has(text, "tercera") || has(text, "tres") || has(text, "3")) index = 2;
         else if (has(text, "cuarto") || has(text, "cuarta") || has(text, "cuatro") || has(text, "4")) index = 3;
         if (!fetch_mail() && !fetched_at) {
+            if (server_refused) {
+                ls_speak(a, "Gmail no aceptó la contraseña de aplicación. Ponla de nuevo en la página de instalación.");
+                ls_finish(a, "Gmail no aceptó la contraseña.", NULL);
+                return true;
+            }
             ls_say(a, CLIP_SIN_CONEXION);
             ls_finish(a, "No tengo conexión en este momento.", NULL);
             return true;
@@ -775,6 +818,11 @@ bool local_mail_try(const char *text, local_answer_t *a) {
     }
 
     if (!fetch_mail() && !fetched_at) {
+        if (server_refused) {  // Gmail answered, but did not accept the account
+            ls_speak(a, "Gmail no aceptó la contraseña de aplicación. Ponla de nuevo en la página de instalación.");
+            ls_finish(a, "Gmail no aceptó la contraseña.", NULL);
+            return true;
+        }
         ls_say(a, CLIP_SIN_CONEXION);
         ls_finish(a, "No tengo conexión en este momento.", NULL);
         return true;

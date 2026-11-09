@@ -2,6 +2,7 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -37,6 +38,54 @@ static net_error_t error_for_reason(uint8_t reason) {
     }
 }
 
+static char primary_ssid[33], primary_pass[65], backup_ssid[33], backup_pass[65];
+static bool backup_loaded = false, on_backup = false;
+static int misses = 0;
+
+static void load_backup(void) {
+    if (backup_loaded) return;
+    backup_loaded = true;
+    nvs_handle_t handle;
+    if (nvs_open("bug", NVS_READONLY, &handle) == ESP_OK) {
+        size_t n = sizeof(backup_ssid);
+        if (nvs_get_str(handle, "ssid2", backup_ssid, &n) != ESP_OK) backup_ssid[0] = 0;
+        n = sizeof(backup_pass);
+        if (nvs_get_str(handle, "pass2", backup_pass, &n) != ESP_OK) backup_pass[0] = 0;
+        nvs_close(handle);
+    }
+}
+
+static void apply_network(const char *ssid, const char *password) {
+    wifi_config_t config = {0};
+    strlcpy((char *)config.sta.ssid, ssid, sizeof(config.sta.ssid));
+    strlcpy((char *)config.sta.password, password, sizeof(config.sta.password));
+    config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    config.sta.threshold.authmode = password[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
+    config.sta.pmf_cfg.capable = true;
+    config.sta.pmf_cfg.required = false;
+    esp_wifi_set_config(WIFI_IF_STA, &config);
+}
+
+bool network_manager_has_backup(void) {
+    load_backup();
+    return backup_ssid[0] != 0;
+}
+
+void network_manager_set_backup(const char *ssid, const char *password) {
+    backup_loaded = true;
+    strlcpy(backup_ssid, ssid ? ssid : "", sizeof(backup_ssid));
+    strlcpy(backup_pass, password ? password : "", sizeof(backup_pass));
+    nvs_handle_t handle;
+    if (nvs_open("bug", NVS_READWRITE, &handle) == ESP_OK) {
+        nvs_set_str(handle, "ssid2", backup_ssid);
+        nvs_set_str(handle, "pass2", backup_pass);
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+    ESP_LOGI(TAG, "%s", backup_ssid[0] ? "Second Wi-Fi saved" : "Second Wi-Fi removed");
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         if (auto_connect) {
@@ -54,6 +103,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
                 xEventGroupSetBits(wifi_event_group, WIFI_FAILED_BIT);
             }
             ESP_LOGW(TAG, "WiFi disconnected (reason %d), retrying...", info->reason);
+            if (last_error == NET_ERR_NOT_FOUND && ++misses >= 3 && backup_ssid[0] && primary_ssid[0]) {  // this network is not here: try the other one
+                misses = 0;
+                on_backup = !on_backup;
+                ESP_LOGI(TAG, "Trying the %s Wi-Fi", on_backup ? "second" : "first");
+                apply_network(on_backup ? backup_ssid : primary_ssid, on_backup ? backup_pass : primary_pass);
+            }
             esp_wifi_connect();
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -61,6 +116,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         ESP_LOGI(TAG, "✓ WiFi connected: " IPSTR, IP2STR(&event->ip_info.ip));
         esp_wifi_set_ps(WIFI_PS_NONE);  // the radio sleeping between beacons added seconds to every answer
         last_error = NET_ERR_NONE;
+        misses = 0;
         xEventGroupClearBits(wifi_event_group, WIFI_FAILED_BIT);
         xEventGroupSetBits(wifi_event_group, WIFI_CONNECTED_BIT);
         current_mode = NET_MODE_WIFI;
@@ -111,6 +167,11 @@ static esp_err_t ensure_started(void) {
 
 void network_manager_connect_wifi_async(const char *ssid, const char *password) {
     ESP_LOGI(TAG, "Connecting to WiFi: %s", ssid);
+    load_backup();
+    strlcpy(primary_ssid, ssid, sizeof(primary_ssid));
+    strlcpy(primary_pass, password, sizeof(primary_pass));
+    on_backup = false;
+    misses = 0;
 
     wifi_config_t config = {0};
     strlcpy((char *)config.sta.ssid, ssid, sizeof(config.sta.ssid));

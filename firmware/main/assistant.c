@@ -45,6 +45,8 @@ static volatile float audio_level = 0;
 static volatile bool wifi_dirty = false;
 static volatile bool listen_now_request = false;
 static volatile bool muted = false;
+static char test_words[200];
+static volatile bool test_words_pending = false;  // set by assistant_hear()
 static volatile bool announce_pending = false;  // a message from the development PC is waiting to be said
 static volatile bool wake_listening = false;  // the on-board detector is fed with the microphone
 static volatile bool local_wake = false;       // it heard "Hola Bug"
@@ -112,6 +114,14 @@ static void publish_screen(const char *path, char *json) {
     strlcpy(screen_path, path, sizeof(screen_path));
     screen_json = json;
     screen_ready = true;
+}
+
+// For testing from the USB cable: the board acts as if it had just heard these words (BUGCFG {"hear":"..."}); the assistant task picks them up
+
+void assistant_hear(const char *words) {
+    if (test_words_pending || !words) return;
+    strlcpy(test_words, words, sizeof(test_words));
+    test_words_pending = true;
 }
 
 // Opens a screen by its path, as if the voice had asked (used by the installer page's test command)
@@ -236,7 +246,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
         float rms = frame_rms(frame);
         threshold = fmaxf(noise_floor * NOISE_MULTIPLIER, MIN_THRESHOLD);
 
-        if (interruptible && (listen_now_request || local_wake || announce_pending || muted != muted_at_start || music_is_playing() != music_at_start)) {
+        if (interruptible && (listen_now_request || local_wake || announce_pending || test_words_pending || muted != muted_at_start || music_is_playing() != music_at_start)) {
             return 0;
         }
 
@@ -313,7 +323,7 @@ static size_t capture_utterance(int16_t *out, uint32_t wait_ms, assistant_state_
     return samples;
 }
 
-static char announce_text[160];
+static char announce_text[300];
 
 // A message from the development PC (see dev_bridge.c): said as soon as the board is idle
 void assistant_announce(const char *text) {
@@ -324,7 +334,7 @@ void assistant_announce(const char *text) {
 static void chime(void);
 
 static void say_announcement(void) {
-    char text[160];
+    char text[300];
     strlcpy(text, announce_text, sizeof(text));
     announce_pending = false;
     if (muted) return;
@@ -734,6 +744,13 @@ static void assistant_task(void *arg) {
     for (;;) {
         set_state(muted ? ASSISTANT_STATE_MUTED : (music_is_playing() ? ASSISTANT_STATE_MUSIC : ASSISTANT_STATE_STANDBY));
         if (announce_pending) say_announcement();
+        if (test_words_pending) {
+            char words[200];
+            strlcpy(words, test_words, sizeof(words));
+            test_words_pending = false;
+            ESP_LOGI(TAG, "Test phrase: \"%s\"", words);
+            handle_heard(words);
+        }
         // When the PC does not answer, look for it by name every 30 seconds: its address may have changed
         static uint32_t last_find_ms = 0;
         uint32_t clock_ms = pdTICKS_TO_MS(xTaskGetTickCount());

@@ -62,6 +62,11 @@ static void apply(char *json_text) {
         }
         printf("BUGCFG IMU {\"found\":%s,\"ok\":%s,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f}\n", imu_available() ? "true" : "false", ok ? "true" : "false", x, y, z);
     }
+    const char *hear = text_of(root, "hear");  // for testing: pretend these words were heard, e.g. "tengo correos"
+    if (hear && hear[0]) {
+        assistant_hear(hear);
+        strlcat(done, " heard", sizeof(done));
+    }
     const char *open = text_of(root, "open");  // for testing: show a screen, e.g. "games?g=maze"
     if (open && open[0]) {
         assistant_open_screen(open);
@@ -74,6 +79,16 @@ static void apply(char *json_text) {
         strlcat(done, dev_token[0] ? " dev-paired" : " dev-unpaired", sizeof(done));
     }
 
+    const char *relay = text_of(root, "relay");  // https://bug.headlessqa.com: the internet mailbox used away from home (empty removes it)
+    if (relay) {
+        dev_bridge_set_relay(relay);
+        strlcat(done, relay[0] ? " mailbox" : " mailbox-removed", sizeof(done));
+    }
+    const char *ssid2 = text_of(root, "ssid2"), *pass2 = text_of(root, "pass2");  // a second Wi-Fi, e.g. the phone's hotspot
+    if (ssid2) {
+        network_manager_set_backup(ssid2, pass2 ? pass2 : "");
+        strlcat(done, ssid2[0] ? " wifi2" : " wifi2-removed", sizeof(done));
+    }
     const char *ssid = text_of(root, "ssid");
     const char *pass = text_of(root, "pass");
     if (ssid && ssid[0]) {
@@ -106,8 +121,9 @@ static void apply(char *json_text) {
     if (cJSON_GetObjectItem(root, "status")) {
         char mail_user[64] = "";
         local_mail_user(mail_user, sizeof(mail_user));
-        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
-               local_calendar_configured() ? "true" : "false", dev_bridge_paired() ? "true" : "false");
+        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s,\"mailbox\":%s,\"wifi2\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
+               local_calendar_configured() ? "true" : "false", dev_bridge_paired() ? "true" : "false",
+               dev_bridge_relay_configured() ? "true" : "false", network_manager_has_backup() ? "true" : "false");
     } else {
         printf("BUGCFG OK%s\n", done[0] ? done : " nothing-to-change");
     }

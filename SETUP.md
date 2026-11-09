@@ -174,12 +174,19 @@ The same can be done any time, even long after installing, by opening the page a
 
 Optional. `docs/DEV_BRIDGE_PLAN.md` has the whole plan. To try the first part: `python server/tools/pair_board.py`, then
 `python server/tools/bug_notify.py --level ok "hola"`. To make Claude Code announce when it finishes:
-`python server/tools/install_claude_hooks.py --apply` (and `--remove` to undo).
+`python server/tools/install_claude_hooks.py --apply` (and `--remove` to undo). That same step also lets the board **approve or reject**
+the permissions Claude Code asks for (a sheet with Aprobar / Rechazar, or say "aprueba" / "rechaza"; with no answer in about a minute
+Claude Code asks you in the terminal as usual), tell you "cómo va Claude", and send it an instruction ("dile a Claude que continúe",
+"dile a Claude que corra las pruebas"), which resumes the session that is waiting for you.
 
 ## 9. Everything you can say
 
 Start with "Hola Bug" (or tap the ring), then:
 
+- "Qué puedes hacer": the board tells what it can do. Add a topic for a short answer: "qué puedes hacer con el calendario / el correo / los juegos".
+- Claude Code (needs the dev bridge, section 8d): "aprueba" / "rechaza" (or "sí" / "no" while a permission is on screen), "cómo va Claude",
+  "dile a Claude que continúe", "dile a Claude que revise el código", "qué hizo Claude" (shows his last answer), "pregúntale a Claude por qué falló
+  el login" (read-only; then "y el siguiente" continues it), "toma un pantallazo" / "muéstrame mi pantalla" / "cómo va mi pantalla" (a small picture of the PC's desktop appears on the board; tap to close).
 - Time and date: "qué hora es", "qué día es hoy". Briefing: "buenos días".
 - Weather: "cómo está el clima", "clima en Cali". City: "cambia la ciudad a Cali", "detecta mi ciudad".
 - Timers, alarms and reminders: "pon un temporizador de 10 minutos", "despiértame a las 6 y media",

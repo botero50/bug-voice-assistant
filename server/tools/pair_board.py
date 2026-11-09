@@ -2,9 +2,12 @@
 
     python server/tools/pair_board.py            finds the board's port by itself
     python server/tools/pair_board.py COM5       or name it
+    python server/tools/pair_board.py --relay https://bug.headlessqa.com --ssid2 "My phone"    also set the internet mailbox and a hotspot
 
 The same thing can be done from the installer page (Set up the board, "Dev bridge token"). Needs pyserial: pip install pyserial
 """
+import argparse
+import getpass
 import json
 import sys
 import time
@@ -29,7 +32,12 @@ def find_port():
 
 
 def main():
-    port = sys.argv[1] if len(sys.argv) > 1 else find_port()
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("port", nargs="?", help="the board's serial port, e.g. COM5 (found by itself when there is only one)")
+    parser.add_argument("--relay", help="address of the internet mailbox, e.g. https://bug.headlessqa.com (for use away from home)")
+    parser.add_argument("--ssid2", help="name of a second Wi-Fi, e.g. your phone's hotspot")
+    args = parser.parse_args()
+    port = args.port or find_port()
     if not port:
         sys.exit("I could not tell which port is the board. Run it again with the port, for example COM5.")
     line = ("BUGCFG " + json.dumps({"dev_token": dev_bridge.token()}) + "\n").encode()

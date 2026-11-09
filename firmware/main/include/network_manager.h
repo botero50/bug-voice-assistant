@@ -33,6 +33,9 @@ esp_err_t network_manager_connect_wifi(const char *ssid, const char *password);
 
 // Same, but returns at once. Poll network_manager_is_connected().
 void network_manager_connect_wifi_async(const char *ssid, const char *password);
+// A second network (for example the phone's hotspot), tried when the first one is not found three times in a row. Empty removes it.
+void network_manager_set_backup(const char *ssid, const char *password);
+bool network_manager_has_backup(void);
 
 // Stops reconnecting and disconnects.
 esp_err_t network_manager_disconnect(void);

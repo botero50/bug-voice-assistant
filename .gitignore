@@ -60,3 +60,15 @@ server/wake/*.exe
 # Dev bridge: the pairing token and the log of every request
 server/dev_token.txt
 server/dev_audit.log
+server/dev_actions.json
+
+server/dev_claude.json
+server/dev_runs/
+server/dev_shots/
+
+server/dev_relay.json
+server/pc_token.txt
+server/dev_history.db
+server/dev_notes/
+server/dev_drafts/
+server/dev_jira.json

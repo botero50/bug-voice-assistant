@@ -57,10 +57,14 @@ periods with no PC and, often, no internet.
 5. **A free online text-to-speech** for text the board has no recording of (news, Wikipedia, books).
 6. **The PC becomes optional**: it keeps its skills only as a last fallback and for the first-time training of models.
 
-## Dev bridge (planned): the board as a QA companion
+## Dev bridge: control Claude from the board, and see the desktop
 
-See `docs/DEV_BRIDGE_PLAN.md`. It runs on the PC on purpose (the development environment lives there): named actions, `claude -p`, screenshots and
-test-result parsing; the board is the voice, the status panel and the confirmation button.
+See `docs/DEV_BRIDGE_PLAN.md`. It runs on the PC on purpose (the development environment lives there); the board is the voice, the screen and the buttons.
+Built: messages from the PC; Claude Code hooks that report each session's state; approve or reject permissions (touch or voice, `local_claude.c`);
+"cómo va Claude", "dile a Claude que ..." (resumes the last session with `claude -p --resume`, narrating what it does); Claude's questions as a list of
+buttons; "qué hizo Claude"; read-only questions to Claude; a small picture of the PC's desktop on the board; the `bug-dev` MCP server so Claude can ask you
+something on the board. Away from home everything goes through the `bug-gateway` Worker (company project, `F:/Automation company/bug-gateway`), which the
+PC reaches by connecting out. Test automation (named actions, reports, flaky history, tickets) was built and removed on request.
 
 ## What stays on the PC on purpose
 

@@ -180,5 +180,100 @@ Tested on the board: the board connected with a signed request (its address appe
 after a restart, and the online voice played it (`TTS: Online voice piece ... played`, the first time that path was heard working). Not tested:
 the hooks inside a real Claude Code session, and the speech quality.
 
+### Phase 1a as built: watch Claude, approve, continue
+
+- **Hook script** `server/tools/bug_claude_hook.py` (replaces `bug_notify.py` in the hooks; `install_claude_hooks.py --apply` swaps them and
+  adds `UserPromptSubmit`, `PermissionRequest`, `SessionEnd`). It posts the hook's JSON to `/dev/hook`, signed like every other request.
+- **State per session** (`working`, `waiting`, `idle`) is kept by the server; "cómo va Claude" makes the server say it
+  ("En voice assitance Claude está esperando tus órdenes").
+- **Approvals:** on `PermissionRequest` the server creates a numbered approval, sends the board an event with `ask` set and the exact action
+  ("para ejecutar: npm test"), and holds the hook up to 55 s. The board shows a sheet (Aprobar / Rechazar) and listens for "aprueba" / "rechaza";
+  its answer goes to `/dev/command {"cmd":"decide"}` and the hook prints Claude Code's allow or deny decision. No answer, server off or board
+  off: the hook prints nothing and Claude Code asks in the terminal as before. Each approval counts once; a late answer is refused.
+- **Orders:** "dile a Claude que ..." sends `{"cmd":"say"}`. The server resumes the most recent **idle** session in its own folder with
+  `claude -p "<text>" --resume <session>` (set `BUG_CLAUDE` to point at the executable) and the board says the answer. It refuses while the
+  session is working. Claude Code's own permission settings still apply, and any permission it asks for in that run comes back to the board.
+- **Named actions:** copy `server/dev_actions.example.json` to `server/dev_actions.json` (ignored by git) and list your commands: `say` (the phrase you
+  speak), `cmd` (an argument list, no shell), `cwd`, optional `report` (a JUnit XML read for "12 pruebas, 2 fallaron"), `timeout`, and
+  `confirm: true` to make the board show Aprobar / Rechazar with the exact command first. "Corre las pruebas de humo" picks the entry by its
+  phrase; heard words are never part of a command line. The board says "pasaron / fallaron" when it ends.
+- **Not done:** reaching a session that is waiting at an interactive prompt other than a permission (questions with choices), sending to a
+  specific session by name, screenshots, and the named test actions (the rest of phase 1).
+- Tests: `server/dev_bridge_test.py` (now covers state, allow, deny, timeout, late answers, refused unknown commands, resume target).
+  Checked live: a request through the real hook script reached the board, the board's order came back, and the hook printed "allow".
+
+### Phase 1b as built: knowing what Claude is doing
+
+A run started by voice now uses `--output-format stream-json`, and the server reads it line by line (`RunWatcher` in `dev_bridge.py`):
+the board **says Claude's first sentence** (what it is going to do), **shows a line every 25 s** about what it is editing or running (not spoken),
+and at the end **says the summary**. A short briefing (`BRIEFING`) tells Claude to announce its plan, summarise in two sentences and, when it
+needs your decision, stop and end with a line `PREGUNTA: ...`; the board says it as "Claude pregunta: ..." and you answer with
+"dile a Claude que sí / la opción B". The same stream feeds **http://127.0.0.1:5000/dev/live** (this computer only; refreshes every 2 s with the steps of
+each run and the state of each session). Limits: a board message is 140 characters (the full text is on the live page and in `dev_runs/`); the
+desktop app's chat window cannot be made to show a run it did not start, and a session that you drive in the app itself is reported only through the
+hooks (start, permissions, end), not step by step.
+
+### Scope: control Claude from the board, and see the PC's desktop
+
+The plan above was written for a QA automation engineer; the owner only wants two things, so **that is the whole scope**: (1) control Claude from the board, (2) see
+the desktop when needed. Test automation (named actions, Playwright/JUnit reports, flaky history, Jira tickets, stand-up notes, work briefing, "qué ves"
+by Claude, Playwright MCP, VS Code actions) was built once and then **removed on request**; the ideas stay in sections 2 to 4 only as research.
+
+**Picture of the desktop.** "Toma un pantallazo", "muéstrame mi pantalla" or "cómo va mi pantalla": the server takes one monitor with `mss`, saves it whole in
+`server/dev_shots/` (last 20, not in git, visible on `http://127.0.0.1:5000/dev/live` on that PC), refuses when the window in front looks private (password
+managers, banks, private windows; add words with `screenshot_block`, pick the monitor with `screenshot_monitor` in `dev_claude.json`), and makes a **small copy**
+(at most 320x240, RGB565, 115 KB) for the board. The message "Pantallazo listo" tells the board a picture is waiting; the board downloads it (`GET /dev/shot`,
+signed, from the PC at home or from the gateway away) and shows it on a sheet with "toca para cerrar" (it also closes by itself after two minutes). Checked on the
+board at home and through the gateway. It is a small, low-quality picture: enough to see which windows are open and what state they are in, not to read text.
+**Anyone with the board's token could ask the gateway for a screenshot**; that is the price of seeing the desktop from outside, and the private-window check
+stays on the PC.
+
+**Choices on the board's screen.** When Claude's question has 2 to 4 options, the board shows a sheet with the question and one button per option
+(plus Cerrar); tapping one sends "Elijo: <option>" to Claude (the same as saying "dile a Claude que ..."). The briefing asks Claude to end with
+`PREGUNTA: ...` and `OPCIONES: a | b | c`; if it only writes the alternatives inside the question ("¿Sigo con A, con B o con C?") the server splits
+them itself (`find_options`). `/dev/notify` also accepts `"options": [...]`, which is how to try the sheet by hand.
+
+**Questions to Claude.** "Pregúntale a Claude por qué falló el login" sends `{"cmd":"ask"}`. The server runs `claude -p --output-format json` in the folder
+of the session you wrote to last, with **read-only tools only** (`Read`, `Glob`, `Grep`, `git log/diff/status/show`) and `--permission-mode dontAsk`, so
+nothing can be edited or run even if a log or file contains instructions. Bug says the first 140 characters and shows the whole answer on the sheet.
+"Y el siguiente", "y por qué...", "y cómo..." within five minutes continue the same question session. Those runs set `BUG_VOICE_ASK`, which the hook script
+obeys by staying silent, so a question never becomes "the session you wrote to last". Set `ask_cwd` in `server/dev_claude.json` to fix the folder (the tool list is fixed in code).
+
+**The bug-dev MCP server.** `server/tools/bug_dev_mcp.py` (needs `pip install "mcp>=1.27,<2"`, already in the Bug venv) gives Claude Code two tools:
+`ask_user(question, options)` shows the question on the board with one button per option and **waits for your tap or voice** (up to 10 minutes), so Claude can stop
+and ask you a decision when you are away, and `notify_user`. Register it once, from any folder (PowerShell):
+
+```
+claude mcp add bug-dev --scope user -- "$env:USERPROFILE/bug-venv/Scripts/python.exe" "<this project>/server/tools/bug_dev_mcp.py"
+```
+
+Checked with a real MCP client: tools listed, a notice shown, and `ask_user` returned the option tapped on the board. Registering it changes your Claude Code
+configuration, so it is left for you to run.
+
+### What an order from outside the house may do (decided with the owner)
+
+A stolen board token would let someone sign orders through the gateway, so orders that arrive through the mailbox (`origin="remote"` in `apply_command`) are limited,
+while the same orders from the board at home keep your own permissions:
+- **"Dile a Claude que…" from outside** resumes the session with a fixed profile in code (`REMOTE_PROFILE`): it can read and edit files in the project, but
+  Bash, PowerShell, WebFetch and WebSearch are denied, and the bridge's own code (`server/tools`, `server/dev_*`, `bug_server.py`, token files), `.claude`, `.git` and `.env` cannot be edited.
+  The profile is in code, not in `dev_claude.json`, so a run cannot widen it by editing a file (checked with a real Claude run: a protected path was refused, a normal one written).
+  `ask` questions use a fixed read-only tool list for the same reason.
+- **Approving a permission from outside** works only for reads and for edits of a file inside the session's folder that is not in a protected place. **Every shell command and
+  every other tool is approved only at home**, by touching or speaking to the board on the home network; from outside the board says "Ese permiso solo se aprueba en casa".
+  Rejecting is always allowed.
+- Still possible with a stolen token: reading and editing project files (outside the protected ones), asking read-only questions, and taking small screenshots (the private-window check stays).
+  An edited project file could carry code that you later run yourself, so review what a remote run changed (`git diff`) before running it.
+
+### Away from home: the internet mailbox (bug-gateway)
+
+The gateway lives in the company project (`F:\Automation company\bug-gateway`, README there): a Cloudflare Worker at `bug.headlessqa.com` with one
+Durable Object that holds the board's messages and orders. **The PC connects out** to it (`server/dev_relay.py`: pushes every message, asks for orders every
+3 s and runs them through the same `apply_command` as at home); **the board** (HTTPS, `dev_bridge.c`) uses it after three failures reaching the home server,
+for three minutes at a time. A second Wi-Fi (your phone's hotspot) is tried when the first network is not found three times (`network_manager.c`).
+Set up with `server/tools/gateway_setup.py` and `pair_board.py --relay https://bug.headlessqa.com --ssid2 "..."`. The gateway refuses screenshot orders and
+anything not on the short list. Checked: 24 gateway tests (`npm test`), an end-to-end run of the real Worker code with the PC client and a pretend board.
+The gateway is deployed (2026-11-09) and was checked live, including the real board using it with the home server off.
+Not checked: the board on another network (hotspot) and the second Wi-Fi switch.
+
 Design notes: the first time the board connects it ignores messages older than two minutes, so a restart does not replay yesterday's news; at most the
 newest five are delivered after the board was off; a message the screen has not shown yet when six are waiting is dropped.

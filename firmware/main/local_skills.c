@@ -215,6 +215,12 @@ bool local_skills_try(const char *original, local_answer_t *a) {
     static const char *const timer_words[] = {"temporizador", "alarma", "despiertame", "recuerdame", "avisame", "minutos", "minuto", "horas", "segundos", NULL};
     static const char *const home_words[] = {"inicio", "volver", "vuelve", "atras", "salir", NULL};
 
+    if (local_help_try(text, a)) {
+        return true;
+    }
+    if (local_claude_try(text, a)) {
+        return true;
+    }
     // The shopping list and the notes (the board keeps them itself)
     if (local_lists_try(original, a)) {
         return true;

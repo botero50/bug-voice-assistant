@@ -4,8 +4,9 @@
     python server/tools/install_claude_hooks.py --apply    adds it (a copy of the old file is kept next to it)
     python server/tools/install_claude_hooks.py --remove    takes it out again
 
-Two hooks are added: Stop ("Claude terminó en <project>") and Notification (permission or input needed). Each one runs bug_notify.py,
-which stays quiet if the server is off. Hooks of yours that are already there are left alone.
+Five hooks are added (UserPromptSubmit, Stop, Notification, PermissionRequest, SessionEnd); each runs bug_claude_hook.py, which
+stays quiet if the server is off. It lets the board say "Claude terminó", answer "¿cómo va Claude?" and approve or reject a
+permission request by touch or voice. Hooks of yours that are already there are left alone.
 """
 import json
 import shutil
@@ -13,8 +14,8 @@ import sys
 from pathlib import Path
 
 SETTINGS = Path.home() / ".claude" / "settings.json"
-SCRIPT = Path(__file__).with_name("bug_notify.py").resolve()
-MARK = "bug_notify.py"
+SCRIPT = Path(__file__).with_name("bug_claude_hook.py").resolve()
+MARKS = ("bug_notify.py", "bug_claude_hook.py")
 
 
 def command():
@@ -23,12 +24,15 @@ def command():
 
 
 def wanted():
-    entry = {"hooks": [{"type": "command", "command": command()}]}
-    return {"Stop": [entry], "Notification": [entry]}
+    """Each event runs bug_claude_hook.py; PermissionRequest waits up to a minute for your answer on the board (timeout is in seconds)."""
+    def entry(timeout):
+        return {"hooks": [{"type": "command", "command": command(), "timeout": timeout}]}
+    return {"UserPromptSubmit": [entry(10)], "Stop": [entry(10)], "Notification": [entry(10)],
+            "PermissionRequest": [entry(75)], "SessionEnd": [entry(10)]}
 
 
-def has_ours(groups):
-    return any(MARK in h.get("command", "") for g in groups for h in g.get("hooks", []))
+def is_ours(group):
+    return any(m in h.get("command", "") for h in group.get("hooks", []) for m in MARKS)
 
 
 def main():
@@ -39,15 +43,14 @@ def main():
         print(json.dumps({"hooks": wanted()}, indent=2))
         print(f"\nRun again with --apply to add this to {SETTINGS}")
         return
-    if mode == "--apply":
-        for event, groups in wanted().items():
-            if not has_ours(hooks.get(event, [])):
-                hooks.setdefault(event, []).extend(groups)
-    elif mode == "--remove":
-        for event in list(hooks):
-            hooks[event] = [g for g in hooks[event] if not any(MARK in h.get("command", "") for h in g.get("hooks", []))]
+    if mode in ("--apply", "--remove"):
+        for event in list(hooks):  # our own entries, including the older bug_notify.py ones, are replaced; yours stay
+            hooks[event] = [g for g in hooks[event] if not is_ours(g)]
             if not hooks[event]:
                 del hooks[event]
+    if mode == "--apply":
+        for event, groups in wanted().items():
+            hooks.setdefault(event, []).extend(groups)
     else:
         sys.exit(__doc__)
     if SETTINGS.exists():

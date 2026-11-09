@@ -32,6 +32,7 @@ import radio
 import sample_data
 import timers
 import dev_bridge
+import dev_relay
 import train_api
 import trivia
 from location import DEFAULT_CITY, current_place, forget_place, geocode, get_json, save_place
@@ -52,6 +53,7 @@ COLOMBIA = timezone(timedelta(hours=-5))  # Colombia has no daylight saving time
 app = Flask(__name__)
 app.register_blueprint(train_api.blueprint)
 app.register_blueprint(dev_bridge.blueprint)
+dev_relay.start()  # connects OUT to the internet mailbox when server/dev_relay.json exists
 model = None
 
 

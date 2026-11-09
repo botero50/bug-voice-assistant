@@ -391,12 +391,34 @@ void app_main(void) {
             }
 
             {
-                char dev_text[140];
+                char dev_text[300];
                 int dev_level;
                 bool dev_speak;
-                if (dev_bridge_take(dev_text, sizeof(dev_text), &dev_level, &dev_speak)) {
+                int dev_ask;
+                ui_approval_sync(dev_bridge_pending_ask());
+                ui_choices_sync(dev_bridge_choice_open());
+                {
+                    const uint8_t *shot_pixels;
+                    int shot_w, shot_h;
+                    if (dev_bridge_shot_take(&shot_pixels, &shot_w, &shot_h)) {
+                        ui_shot_show(shot_pixels, shot_w, shot_h);
+                        voice_activity_ms = now;  // wakes the screen
+                    }
+                }
+                if (dev_bridge_take(dev_text, sizeof(dev_text), &dev_level, &dev_speak, &dev_ask)) {
                     lv_color_t color = dev_level == 1 ? COLOR_ACCENT_GREEN : dev_level == 2 ? lv_color_make(255, 170, 0) : dev_level == 3 ? COLOR_ACCENT_RED : COLOR_ACCENT_BLUE;
-                    ui_notice(dev_text, color, 7000);
+                    char choices[4][120];
+                    int choice_count = dev_bridge_last_choices(choices);
+                    const char *full_text = dev_bridge_last_full();
+                    if (dev_ask > 0) {
+                        ui_approval_show(dev_text, dev_ask);
+                    } else if (choice_count >= 2) {
+                        ui_choices_show(dev_text, (const char (*)[120])choices, choice_count, color);
+                    } else if (full_text[0]) {
+                        ui_choices_show(full_text, NULL, 0, color);  // the whole explanation, to read and scroll
+                    } else {
+                        ui_notice(dev_text, color, 7000);
+                    }
                     voice_activity_ms = now;  // wakes the screen
                     if (dev_speak) assistant_announce(dev_text);
                 }

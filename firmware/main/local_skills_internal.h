@@ -56,6 +56,8 @@ bool local_weather_brief(char *out, size_t size);
 bool local_calendar_brief(char *out, size_t size);
 // Translation, favourite stations, books from the card and the morning briefing
 bool local_more_try(const char *original, const char *text, local_answer_t *a);
+bool local_claude_try(const char *text, local_answer_t *a);  // approve / reject / "cómo va Claude" / "dile a Claude que ..."
+bool local_help_try(const char *text, local_answer_t *a);  // "qué puedes hacer": a spoken tour of the skills
 void ls_speak_lang(local_answer_t *a, const char *text, const char *lang);
 
 // Say this text with the free online voice, after the clips (the board has no recording of it)

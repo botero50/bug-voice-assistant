@@ -488,6 +488,31 @@ static bool try_games(const char *text, local_answer_t *a) {
     return true;
 }
 
+// "¿Qué puedes hacer?": a spoken tour of the skills (nothing is shown). Asking about one topic ("qué puedes hacer con el calendario") tells that part.
+bool local_help_try(const char *text, local_answer_t *a) {
+    bool asks = strstr(text, "que puedes hacer") || strstr(text, "que sabes hacer") || strstr(text, "que haces") ||
+                strstr(text, "para que sirves") || strstr(text, "que funciones tienes") ||
+                strstr(text, "como me puedes ayudar") || strstr(text, "en que me puedes ayudar") || strstr(text, "que comandos") ||
+                (has(text, "ayuda") && (has(text, "necesito") || has(text, "dame") || strlen(text) < 14));
+    if (!asks) return false;
+    const char *spoken;
+    if (has(text, "calendario") || has(text, "agenda")) {
+        spoken = "Con el calendario te leo lo que tienes hoy y mañana, tu próxima cita y los eventos de la semana. Di: qué tengo hoy en la agenda.";
+    } else if (has(text, "correo") || has(text, "correos") || has(text, "email")) {
+        spoken = "Con el correo te digo cuántos mensajes nuevos tienes, te los leo y los muestro en pantalla. Di: léeme mis correos.";
+    } else if (has(text, "juegos") || has(text, "juego")) {
+        spoken = "Tengo más de treinta juegos: memoria, dos mil cuarenta y ocho, laberinto, ahorcado, adivinanzas y el adivino que lee tu mente. Di: juguemos.";
+    } else {
+        spoken = "Puedo hacer muchas cosas. Te digo la hora, el clima y tu calendario. Leo tus correos y pongo alarmas, temporizadores y cronómetro. "
+                 "Pongo música y emisoras de radio, y cuento chistes y adivinanzas. Leo noticias, busco en Wikipedia, traduzco y hago cuentas. "
+                 "Te doy el precio del dólar y de las criptomonedas, y tengo juegos. Cambio los colores de mi pantalla. "
+                 "Y si conectas tu computador, te aviso cuando Claude termine o necesite un permiso. Pregúntame por el calendario, el correo o los juegos para saber más.";
+    }
+    ls_speak(a, spoken);
+    ls_finish(a, "Esto puedo hacer.", NULL);
+    return true;
+}
+
 bool local_more_try(const char *original, const char *text, local_answer_t *a) {
     if (try_riddle(text, a)) return true;
     if (try_games(text, a)) return true;
