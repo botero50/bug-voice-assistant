@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include "assistant.h"
 #include "alarms.h"
 #include "clips_player.h"
@@ -728,6 +729,7 @@ static void handle_command_with_voice(int16_t *utterance) {
 }
 
 static void assistant_task(void *arg) {
+    mem_task_note("assistant", 12288);
     int16_t *utterance = heap_caps_malloc(MAX_UTTERANCE_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
     if (!utterance) {
         ESP_LOGE(TAG, "No memory for the recording buffer");

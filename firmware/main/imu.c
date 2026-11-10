@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include "imu.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
@@ -52,6 +53,7 @@ static void sensor_enable(bool on) {
 }
 
 static void imu_task(void *arg) {
+    mem_task_note("imu", 3072);
     for (;;) {
         bool wanted = (int32_t)(wanted_until - now_ms()) > 0;
         if (!wanted) {

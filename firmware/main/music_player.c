@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include "music_player.h"
 #include "local_skills.h"
 #include "audio_driver.h"
@@ -428,6 +429,7 @@ static void run_stream(void) {
 }
 
 static void music_task(void *arg) {
+    mem_task_note("music", 10240);
     int quick_failures = 0;
     while (!stop_request) {
         TickType_t started = xTaskGetTickCount();

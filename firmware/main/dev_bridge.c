@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include "dev_bridge.h"
 #include "cJSON.h"
 #include "esp_http_client.h"
@@ -289,6 +290,7 @@ static void post_command(const command_t *command, const char *server_url) {
 }
 
 static void dev_task(void *arg) {
+    mem_task_note("dev_bridge", 6144);
     for (;;) {
         if (!dev_bridge_paired() || network_manager_is_connected() != ESP_OK) {
             vTaskDelay(pdMS_TO_TICKS(5000));

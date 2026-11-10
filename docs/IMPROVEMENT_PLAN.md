@@ -47,6 +47,12 @@ Beamforming (Phase 1.2 of the package) is possible later with the two microphone
 ## 4. The rest of the package, adjusted
 
 - **Phase 2:** streaming Whisper from the PC for lower latency; a review of the Home states; friendly errors (partly done: the board says why Gmail failed, why the PC is away); the 5-turn memory only when there is a model to use it.
+  - *Phase 2 measurements (2026-11-10, real board, `BUGCFG {"hear":...}` over USB):* skills that need no internet answer at once (time, math: a few ms). With internet: weather 1.5 s, Wikipedia about 3.9 s, and a joke was 4.4 s to the text plus 6 s until the voice had played.
+    The time is **secure connections**: every https request costs about 1.4 s of handshake on the board, and a joke made four in a row (JokeAPI, two translations, the voice). Fixed for jokes: both parts are translated in one request (**4.4 s to 3.0 s**, three runs: 3.3, 2.9, 2.8).
+    Fixed for the online voice (`tts_online.c`): all the pieces of one answer now travel over **one** open connection (one certificate check instead of one per sentence). The silence between sentences went from about 2.5 to 3 s to **0.5 to 1.3 s** (a piece is fetched in 0.5 to 1.3 s on the open connection, 1.8 s the first time).
+    **Prefetch done (after the memory audit):** while a piece plays, a small task (6 KB stack) fetches the next one over the same connection. Measured on the board with the news and Wikipedia: the next piece is fetched in 0.5 to 0.7 s while the current one plays and is **ready with 0 ms of waiting**, so the silence between sentences is gone (what remains is the switch between two MP3 files). Free internal RAM during speech: 35 to 42 KB, lowest 23 KB; no errors.
+    What is left is the time to the **first** word: 1.6 to 1.9 s (the secure handshake plus the service making the audio).
+    Next latency ideas, in order of gain: open the connection to the voice service in the background as soon as an online skill starts (its handshake then overlaps the time spent fetching the text), and reuse the TLS session with tickets (`CONFIG_ESP_TLS_CLIENT_SESSION_TICKETS`) for the first request.
 - **Phase 3:** a Phi-2 or similar on the PC as the free fallback for conversation (the board stays offline-first for its own skills).
 - **Phase 4:** MQTT smart home, speaker identification and a skills folder on the card are optional and each is a project of its own.
 - **Phase 5:** tests, docs and a demo; the host tests already cover games, skills, the bridge and the gateway.
@@ -66,3 +72,25 @@ The ESP32-S3 has about 340 KB of internal RAM (200 KB of it taken by static data
 6. **Use the microSD for what is big**: the recorded voice clips (7.5 MB in a flash partition) and the models could live on the card and be loaded to the PSRAM on demand, freeing flash for the program; a card cache for downloads (covers, headlines, songs).
 7. **A guard**: log the free internal RAM at every screen change and warn below 8 KB, so the next regression is seen the day it is introduced.
 Done when: at least 40 KB free internal RAM after boot and after a TLS request, the Wi-Fi screen scans in under 6 seconds, and nothing else got slower.
+
+#### Result of the memory audit (2026-11-10)
+
+New tool: `firmware/main/mem_report.c`, over USB `BUGCFG {"mem":1}` (internal and external heap, biggest free block, lowest it ever was, the stack of each task: how much of it was really used; each task registers itself with `mem_task_note`).
+Measured on the real board, free internal RAM:
+
+| Step | Free internal RAM | Notes |
+|---|---|---|
+| Before (idle / during requests) | 7 KB (5 KB at its lowest) | the Wi-Fi scan screen hung |
+| Wi-Fi: 10 fixed receive buffers instead of 16, 8 fixed transmit buffers instead of 16, block-ack windows 16 instead of 32 | 28 to 30 KB | about 22 KB freed |
+| Wi-Fi code left in flash (`ESP_WIFI_IRAM_OPT`, `RX_IRAM_OPT` off) | **36 KB idle, 44 KB in a request, 21 KB while the radio plays** | about 8 KB more |
+
+Checked after each change: voice requests (round trips 260 to 430 ms, same as before), the online voice (pieces fetched in 0.35 to 0.5 s on the open connection), 75 s of radio with no warning, no `esp-aes` allocation errors.
+
+What the audit found, so it is not repeated:
+- **FreeRTOS's trace facility costs about 7 KB of internal RAM by itself** (with it on, 0.7 KB free): never turn it on for a build that is kept; the stack registry replaces it.
+- **TLS buffers were already in the external RAM** (`MBEDTLS_EXTERNAL_MEM_ALLOC`), so the plan's item 2 was not the lever; the Wi-Fi buffers were.
+- The Wi-Fi "dynamic TX buffers" option is **not available** with `SPIRAM_USE_MALLOC` (ESP-IDF recommends static buffers with PSRAM), so only their number was reduced.
+- Stacks are used at most: main 52% of 8 KB, config 46% of 6 KB, dev_bridge 53% of 6 KB, assistant 69% of 12 KB, music 36% of 10 KB. Trimming them would give about 4 KB: not done, little gain for the risk.
+- Still in internal RAM and left alone: the two display buffers (about 18 KB each, DMA), which a PSRAM buffer could replace at a cost in frame rate that was hard to win back before.
+
+Goal check (at least 40 KB free after boot and after a TLS request): 36 KB at idle, 44 KB in a request: met in practice. The Wi-Fi scan screen can start its task with room to spare; the TTS prefetch task that was waiting for this memory (section 4) can now be built.

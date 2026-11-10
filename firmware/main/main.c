@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -189,6 +190,7 @@ static void show_assistant_state(assistant_state_t state) {
 }
 
 void app_main(void) {
+    mem_task_note("main", 8192);
     ESP_LOGI(TAG, "╔═══════════════════════════════════════════════╗");
     ESP_LOGI(TAG, "║  Bug Voice Assistant - ESP32-S3 Firmware     ║");
     ESP_LOGI(TAG, "║  Colombian Spanish Voice Companion            ║");

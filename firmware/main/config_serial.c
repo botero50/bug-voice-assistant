@@ -3,6 +3,7 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
 #include "dev_bridge.h"
+#include "mem_report.h"
 #include "wake_verify.h"
 #include "imu.h"
 #include "freertos/FreeRTOS.h"
@@ -68,6 +69,7 @@ static void apply(char *json_text) {
         wake_verify_set_threshold((float)verify->valuedouble);
         strlcat(done, " verify", sizeof(done));
     }
+    if (cJSON_GetObjectItem(root, "mem")) mem_report("asked over USB");
     const char *hear = text_of(root, "hear");  // for testing: pretend these words were heard, e.g. "tengo correos"
     if (hear && hear[0]) {
         assistant_hear(hear);
@@ -138,6 +140,7 @@ static void apply(char *json_text) {
 }
 
 static void config_task(void *arg) {
+    mem_task_note("config", 6144);
     usb_serial_jtag_driver_config_t cfg = USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     cfg.rx_buffer_size = 2048;
     cfg.tx_buffer_size = 512;

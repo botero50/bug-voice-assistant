@@ -1,3 +1,4 @@
+#include "mem_report.h"
 #include "ota_update.h"
 #include "music_player.h"
 #include "cJSON.h"
@@ -91,6 +92,7 @@ static bool fetch_version(char *version, size_t size) {
 }
 
 static void ota_task(void *arg) {
+    mem_task_note("ota", 10240);
     const char *current = esp_ota_get_app_description()->version;
     char offered[32] = "";
     say("Buscando actualización...");

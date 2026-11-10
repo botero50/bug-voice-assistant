@@ -355,7 +355,27 @@ static bool fetch_online_joke(char *setup, size_t setup_size, char *punchline, s
     cJSON *second = root ? cJSON_GetObjectItem(root, "delivery") : NULL;
     bool ok = false;
     if (cJSON_IsString(first) && cJSON_IsString(second) && strlen(first->valuestring) < 200 && strlen(second->valuestring) < 200) {
-        ok = ls_translate("en", "es", first->valuestring, setup, setup_size) && ls_translate("en", "es", second->valuestring, punchline, punchline_size);
+        // One translation for both parts (each secure connection costs about 1.4 s on the board), split again at the marker that survives the translation
+        if (strlen(first->valuestring) + strlen(second->valuestring) < 150) {
+            static char joined[340], both[420];
+            snprintf(joined, sizeof(joined), "%s ||| %s", first->valuestring, second->valuestring);
+            if (ls_translate("en", "es", joined, both, sizeof(both))) {
+                char *cut = strstr(both, "|||");
+                if (cut) {
+                    char *end = cut;
+                    while (end > both && end[-1] == ' ') end--;
+                    *end = ' ';
+                    cut += 3;
+                    while (*cut == ' ') cut++;
+                    strlcpy(setup, both, setup_size);
+                    strlcpy(punchline, cut, punchline_size);
+                    ok = setup[0] && punchline[0];
+                }
+            }
+        }
+        if (!ok) {  // the fallback: each part on its own
+            ok = ls_translate("en", "es", first->valuestring, setup, setup_size) && ls_translate("en", "es", second->valuestring, punchline, punchline_size);
+        }
     }
     cJSON_Delete(root);
     return ok;
