@@ -74,6 +74,7 @@ static bool try_translation(const char *original, const char *text, local_answer
         if (strstr(text, TRIGGERS[i])) trigger = i;
     }
     if (trigger < 0) return false;
+    tts_prewarm();  // the translation is spoken online: open that connection while it is fetched
     words_t plain, orig;
     split(&plain, text);
     split(&orig, original);

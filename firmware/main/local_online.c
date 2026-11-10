@@ -153,6 +153,7 @@ static bool try_news(const char *text, local_answer_t *a) {
           strstr(text, " que esta pasando "))) {
         return false;
     }
+    tts_prewarm();
     int n = read_news();
     if (n == 0) {
         ls_say(a, CLIP_SIN_CONEXION);
@@ -234,6 +235,7 @@ static bool try_wikipedia(const char *original, const char *text, local_answer_t
     for (int i = 0; NOT_FOR_WIKI[i]; i++) {
         if (has(subject - 1, NOT_FOR_WIKI[i])) return false;
     }
+    tts_prewarm();  // it will speak: open the voice connection while the article is fetched
 
     // The subject with the accents that were heard, if both versions split into the same words
     static char query[100];
@@ -364,7 +366,7 @@ static bool fetch_online_joke(char *setup, size_t setup_size, char *punchline, s
                 if (cut) {
                     char *end = cut;
                     while (end > both && end[-1] == ' ') end--;
-                    *end = ' ';
+                    *end = '\0';
                     cut += 3;
                     while (*cut == ' ') cut++;
                     strlcpy(setup, both, setup_size);
@@ -383,6 +385,7 @@ static bool fetch_online_joke(char *setup, size_t setup_size, char *punchline, s
 
 static bool try_joke(const char *text, local_answer_t *a) {
     if (!(has(text, "chiste") || has(text, "chistes") || has(text, "hazme reir") || strstr(text, " algo gracioso "))) return false;
+    tts_prewarm();
     char setup[220], punchline[220];
     bool online = fetch_online_joke(setup, sizeof(setup), punchline, sizeof(punchline));
     if (!online) {

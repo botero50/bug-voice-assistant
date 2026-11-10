@@ -179,7 +179,7 @@ static void show_assistant_state(assistant_state_t state) {
         break;
     case ASSISTANT_STATE_NO_SERVER:
         ui_home_set_mode(UI_HOME_ERROR);
-        show_texts("", "No encuentro el servidor. ¿Está encendido el PC?");
+        show_texts("", "No encuentro el servidor (PC apagado?). Aún hago lo básico sin él");
         break;
     case ASSISTANT_STATE_MIC_ERROR:
         ui_home_set_mode(UI_HOME_ERROR);

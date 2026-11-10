@@ -5,6 +5,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "esp_timer.h"
 #include "freertos/task.h"
 #include "local_skills.h"
 #include "local_skills_internal.h"
@@ -58,9 +59,11 @@ typedef struct {
     size_t size, capacity;
 } sink_t;
 
+static sink_t *volatile s_target = NULL;  // the client's user_data points here: which sink receives the data now (NULL: nothing, the answer is dropped)
+
 // Where the HTTP client writes the MP3 it receives: the piece being fetched now (the one playing is in the other sink)
 static esp_err_t on_data(esp_http_client_event_t *event) {
-    sink_t *sink = event->user_data ? *(sink_t **)event->user_data : NULL;
+    sink_t *sink = event->user_data ? *(sink_t *volatile *)event->user_data : NULL;
     if (event->event_id == HTTP_EVENT_ON_DATA && event->data_len > 0 && sink) {
         if (sink->size + (size_t)event->data_len > sink->capacity) {
             size_t bigger = sink->capacity ? sink->capacity * 2 : 16384;
@@ -90,7 +93,7 @@ static bool fetch_piece(esp_http_client_handle_t client, sink_t *sink, const cha
 
 typedef struct {
     esp_http_client_handle_t client;
-    sink_t **target;      // the client's user_data: which sink receives the data
+    sink_t *volatile *target;  // the client's user_data: which sink receives the data
     sink_t *sink;
     char url[760];
     SemaphoreHandle_t done;
@@ -106,6 +109,95 @@ static void prefetch_task(void *arg) {
     job->took_ms = (esp_timer_get_time() - started) / 1000;
     xSemaphoreGive(job->done);
     vTaskDelete(NULL);
+}
+
+// ---- A connection to the voice service opened ahead of time. The first word of an online answer waited for a secure handshake (about 1.4 s)
+// that can happen while the text is still being fetched: a skill calls tts_prewarm() as soon as it knows it will speak.
+typedef enum { WARM_IDLE, WARM_OPENING, WARM_READY } warm_state_t;
+static volatile warm_state_t warm_state = WARM_IDLE;
+static esp_http_client_handle_t warm_client = NULL;
+static SemaphoreHandle_t warm_lock = NULL;      // guards the state changes
+static SemaphoreHandle_t warm_opened = NULL;    // given when the opening task ends
+static esp_timer_handle_t warm_timer = NULL;    // closes a warm connection nobody used
+#define WARM_KEEP_US (25 * 1000000LL)
+
+static esp_http_client_config_t voice_config(void) {
+    esp_http_client_config_t config = {.url = "https://translate.google.com/", .timeout_ms = 8000, .buffer_size = 1024, .event_handler = on_data,
+                                       .user_data = &s_target, .crt_bundle_attach = esp_crt_bundle_attach, .user_agent = "Mozilla/5.0 (BugVoiceAssistant)"};
+    return config;
+}
+
+static void warm_expired(void *arg) {
+    xSemaphoreTake(warm_lock, portMAX_DELAY);
+    if (warm_state == WARM_READY && warm_client) {
+        esp_http_client_cleanup(warm_client);
+        warm_client = NULL;
+        warm_state = WARM_IDLE;
+        ESP_LOGI(TAG, "The warm voice connection was not used and was closed");
+    }
+    xSemaphoreGive(warm_lock);
+}
+
+static void warm_task(void *arg) {
+    esp_http_client_config_t config = voice_config();
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    bool ok = false;
+    if (client) {
+        int64_t started = esp_timer_get_time();
+        s_target = NULL;  // the tiny answer is not needed, only the open connection
+        esp_http_client_set_url(client, "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q=.");
+        ok = esp_http_client_perform(client) == ESP_OK;
+        ESP_LOGI(TAG, "Voice connection %s in %lld ms", ok ? "warm" : "could not be opened", (long long)((esp_timer_get_time() - started) / 1000));
+    }
+    xSemaphoreTake(warm_lock, portMAX_DELAY);
+    if (ok) {
+        warm_client = client;
+        warm_state = WARM_READY;
+        esp_timer_stop(warm_timer);
+        esp_timer_start_once(warm_timer, WARM_KEEP_US);
+    } else {
+        if (client) esp_http_client_cleanup(client);
+        warm_state = WARM_IDLE;
+    }
+    xSemaphoreGive(warm_lock);
+    xSemaphoreGive(warm_opened);
+    vTaskDelete(NULL);
+}
+
+void tts_prewarm(void) {
+    if (!warm_lock) {
+        warm_lock = xSemaphoreCreateMutex();
+        warm_opened = xSemaphoreCreateBinary();
+        const esp_timer_create_args_t args = {.callback = warm_expired, .name = "tts_warm"};
+        if (!warm_lock || !warm_opened || esp_timer_create(&args, &warm_timer) != ESP_OK) return;
+    }
+    xSemaphoreTake(warm_lock, portMAX_DELAY);
+    bool start = warm_state == WARM_IDLE;
+    if (start) warm_state = WARM_OPENING;
+    xSemaphoreGive(warm_lock);
+    if (!start) return;
+    xSemaphoreTake(warm_opened, 0);  // forget an old signal
+    if (xTaskCreate(warm_task, "tts_warm", PREFETCH_STACK, NULL, 3, NULL) != pdPASS) {
+        xSemaphoreTake(warm_lock, portMAX_DELAY);
+        warm_state = WARM_IDLE;
+        xSemaphoreGive(warm_lock);
+    }
+}
+
+// The warm connection if there is one (waiting a little if it is still opening), or NULL
+static esp_http_client_handle_t take_warm(void) {
+    if (!warm_lock) return NULL;
+    if (warm_state == WARM_OPENING) xSemaphoreTake(warm_opened, pdMS_TO_TICKS(7000));
+    esp_http_client_handle_t client = NULL;
+    xSemaphoreTake(warm_lock, portMAX_DELAY);
+    if (warm_state == WARM_READY && warm_client) {
+        esp_timer_stop(warm_timer);
+        client = warm_client;
+        warm_client = NULL;
+        warm_state = WARM_IDLE;
+    }
+    xSemaphoreGive(warm_lock);
+    return client;
 }
 
 // The URL of the piece that starts at *p (and how many bytes it covers), or false when the text is over
@@ -124,10 +216,12 @@ static bool next_url(const char **p, const char *lang, char *url, size_t url_siz
 bool tts_say_lang(const char *text, const char *lang) {
     bool played = false;
     sink_t sinks[2] = {{0}, {0}};
-    sink_t *target = &sinks[0];
-    esp_http_client_config_t config = {.url = "https://translate.google.com/", .timeout_ms = 8000, .buffer_size = 1024, .event_handler = on_data,
-                                       .user_data = &target, .crt_bundle_attach = esp_crt_bundle_attach, .user_agent = "Mozilla/5.0 (BugVoiceAssistant)"};
-    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_handle_t client = take_warm();
+    bool was_warm = client != NULL;
+    if (!client) {
+        esp_http_client_config_t config = voice_config();
+        client = esp_http_client_init(&config);
+    }
     job_t *job = heap_caps_calloc(1, sizeof(job_t), MALLOC_CAP_SPIRAM);
     SemaphoreHandle_t done = xSemaphoreCreateBinary();
     if (!client || !job || !done) {
@@ -137,7 +231,7 @@ bool tts_say_lang(const char *text, const char *lang) {
         return false;
     }
     job->client = client;
-    job->target = &target;
+    job->target = &s_target;
     job->done = done;
 
     const char *p = text;
@@ -147,9 +241,9 @@ bool tts_say_lang(const char *text, const char *lang) {
     if (next_url(&p, lang, url, sizeof(url), &cut)) {
         // The first piece is fetched here, the others by the prefetch task while the one before plays
         int64_t asked = esp_timer_get_time();
-        target = &sinks[current];
+        s_target = &sinks[current];
         if (fetch_piece(client, &sinks[current], url)) {
-            ESP_LOGI(TAG, "Online voice piece fetched in %lld ms", (long long)((esp_timer_get_time() - asked) / 1000));
+            ESP_LOGI(TAG, "Online voice piece fetched in %lld ms%s", (long long)((esp_timer_get_time() - asked) / 1000), was_warm ? " (on a warm connection)" : "");
             p += cut;
             for (;;) {
                 bool more = next_url(&p, lang, job->url, sizeof(job->url), &cut);
@@ -174,7 +268,7 @@ bool tts_say_lang(const char *text, const char *lang) {
                         break;
                     }
                 } else {  // no task: fetch it here, as before
-                    target = &sinks[1 - current];
+                    s_target = &sinks[1 - current];
                     if (!fetch_piece(client, &sinks[1 - current], job->url)) {
                         ESP_LOGW(TAG, "The online voice did not answer");
                         break;

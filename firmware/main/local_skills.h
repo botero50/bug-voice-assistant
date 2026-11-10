@@ -38,6 +38,7 @@ void local_calendar_set_urls(const char *list);
 // Says text with the free online voice (an MP3 from Google Translate's voice service, decoded on the board). Waits until it ends.
 // Returns false when there is no internet.
 bool tts_say(const char *text);
+void tts_prewarm(void);  // opens the connection to the online voice in the background; call it as soon as a skill knows it will speak, before fetching its text
 bool tts_say_lang(const char *text, const char *lang);  // the same in another language ("en", "fr"...)
 
 #endif

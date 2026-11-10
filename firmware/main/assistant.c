@@ -6,6 +6,9 @@
 #include "server_finder.h"
 #include "voice_clips.h"
 #include "local_skills.h"
+#include "local_context.h"
+#include "nvs.h"
+#include "esp_timer.h"
 #include "audio_driver.h"
 #include "clock.h"
 #include "music_player.h"
@@ -154,11 +157,40 @@ bool assistant_history_get(int index, char *heard, size_t heard_size, char *repl
     return true;
 }
 
+static uint32_t last_exchange_ms = 0;          // when the last exchange happened (0: none since the board started)
+#define FOLLOW_UP_WINDOW_MS (5 * 60 * 1000)     // "y mañana" only leans on an exchange this recent
+
+// The last exchanges survive a restart (a short blob in flash), so "repite lo último" still works after one
+static void history_save(void) {
+    nvs_handle_t h;
+    if (nvs_open("bug", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, "hist", history, sizeof(history));
+    nvs_set_u8(h, "histn", (uint8_t)history_count);
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+static void history_load(void) {
+    nvs_handle_t h;
+    if (nvs_open("bug", NVS_READONLY, &h) != ESP_OK) return;
+    size_t size = sizeof(history);
+    uint8_t n = 0;
+    if (nvs_get_blob(h, "hist", history, &size) == ESP_OK && size == sizeof(history) && nvs_get_u8(h, "histn", &n) == ESP_OK &&
+        n <= ASSISTANT_HISTORY_SIZE) {
+        history_count = n;
+    } else {
+        memset(history, 0, sizeof(history));
+    }
+    nvs_close(h);
+}
+
 static void remember_exchange(const char *heard, const char *reply) {
     memmove(&history[1], &history[0], sizeof(exchange_t) * (ASSISTANT_HISTORY_SIZE - 1));
     strlcpy(history[0].heard, heard, sizeof(history[0].heard));
     strlcpy(history[0].reply, reply, sizeof(history[0].reply));
     if (history_count < ASSISTANT_HISTORY_SIZE) history_count++;
+    last_exchange_ms = (uint32_t)(esp_timer_get_time() / 1000) | 1;
+    history_save();
 }
 
 static void set_texts(const char *heard, const char *reply) {
@@ -568,6 +600,23 @@ static void speak(const voice_result_t *result) {
 
 // The PC sent only the words. The board answers by itself when it can; otherwise it asks the PC.
 static void handle_heard(const char *words) {
+    char expanded[160];
+    if (history_count > 0 && local_context_is_repeat(words)) {
+        // "Repite lo último": the last reply again, with the online voice (the board keeps only the text)
+        ESP_LOGI(TAG, "Heard \"%s\", repeating the last answer", words);
+        voice_result_t made = {.action = VOICE_ACTION_REPLY};
+        strlcpy(made.heard, words, sizeof(made.heard));
+        strlcpy(made.reply, history[0].reply, sizeof(made.reply));
+        strlcpy(pending_voice, history[0].reply, sizeof(pending_voice));
+        strlcpy(pending_voice_lang, "es", sizeof(pending_voice_lang));
+        speak_with(&made, NULL, 0);
+        return;
+    }
+    if (history_count > 0 && last_exchange_ms && (uint32_t)(esp_timer_get_time() / 1000) - (last_exchange_ms & ~1u) < FOLLOW_UP_WINDOW_MS &&
+        local_context_expand(words, history[0].heard, expanded, sizeof(expanded))) {
+        ESP_LOGI(TAG, "Follow-up \"%s\" understood as \"%s\"", words, expanded);
+        words = expanded;
+    }
     local_answer_t local;
     if (local_skills_try(words, &local)) {
         if (strcmp(local.screen, "article") == 0 || strcmp(local.screen, "headlines") == 0) {
@@ -600,6 +649,14 @@ static void handle_heard(const char *words) {
         if (pc_available()) report_unreachable();
         voice_result_t made = {.action = VOICE_ACTION_REPLY};
         strlcpy(made.heard, words, sizeof(made.heard));
+        if (network_manager_is_connected() == ESP_OK) {
+            // The internet works, only the PC does not answer: say what that means and what the board can still do by itself
+            strlcpy(made.reply, "Eso necesita mi servidor y no responde. Aún puedo decirte la hora, el clima, chistes, noticias y manejar temporizadores.", sizeof(made.reply));
+            strlcpy(pending_voice, made.reply, sizeof(pending_voice));
+            strlcpy(pending_voice_lang, "es", sizeof(pending_voice_lang));
+            speak_with(&made, NULL, 0);
+            return;
+        }
         strlcpy(made.reply, "No tengo conexión en este momento.", sizeof(made.reply));
         static const int clips[] = {CLIP_SIN_CONEXION};
         speak_with(&made, clips, 1);
@@ -741,6 +798,7 @@ static void assistant_task(void *arg) {
     settings_copy(&settings);
     muted = settings.mic_muted;
     clips_init();
+    history_load();
 
     wait_for_wifi();
     if (network_manager_is_connected() == ESP_OK) {
