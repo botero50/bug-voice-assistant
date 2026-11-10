@@ -8,6 +8,7 @@ Whisper). The detector looks at the last 1.5 seconds of audio: 24 log-mel bands,
 20 ms). The board computes exactly the same features in C (firmware/main/wake_local.c).
 """
 import math
+import os
 import random
 import sys
 import time
@@ -131,7 +132,10 @@ def keyword_span(x, real=False):
 
 def load(folder, real=False):
     clips = []
+    holdout = os.environ.get("BUG_HOLDOUT_AFTER", "")  # clips recorded at or after this moment are a test set and are never trained on
     for path in sorted(folder.glob("*.wav")):
+        if holdout and real and path.stem[:15] >= holdout:
+            continue
         x = read_wav(path)
         if len(x) < 4000 or np.abs(x).max() < 1e-3:
             continue

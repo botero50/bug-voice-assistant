@@ -159,4 +159,5 @@ async def main():
         print(label, len(list((ROOT / label).glob("*.wav"))), "clips")
 
 
-asyncio.run(main())
+if __name__ == "__main__":  # importing this file must not regenerate everything
+    asyncio.run(main())

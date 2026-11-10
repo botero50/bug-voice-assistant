@@ -40,9 +40,10 @@ void voice_client_bench(void);
 
 // Guided recording of the owner's voice (training data for the models on the board).
 // Asks the PC which phrase to record next. `done` is true when every phrase has enough recordings.
-esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, size_t text_size, bool *done);
+esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, size_t text_size, bool *done, bool *raw);  // raw: the PC also wants both microphones
 // Uploads one recording (16 kHz, 16-bit mono) under the phrase's label.
 esp_err_t voice_client_train_clip(const char *label, const int16_t *pcm, size_t pcm_bytes);
+esp_err_t voice_client_train_raw(const char *label, const int16_t *stereo32k, size_t bytes);  // both microphones, 32 kHz interleaved
 
 esp_err_t voice_client_fetch_screen(const char *path, char **json);
 

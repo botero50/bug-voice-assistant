@@ -6,6 +6,7 @@ Data: the owner's guided recordings (server/wake_data/commands), the same phrase
 (synth_commands), and real Spanish speech and noise recordings (corpus) as "unknown".
 """
 import json
+import os
 import math
 import random
 import sys
@@ -60,7 +61,10 @@ class Net(nn.Module):
 # ------------------------------------------------------------------------------------------------ data
 def load_folder(folder, real):
     clips = []
+    holdout = os.environ.get("BUG_HOLDOUT_AFTER", "")  # clips recorded at or after this moment are a test set and are never trained on
     for path in sorted(folder.glob("*.wav")):
+        if holdout and real and path.stem[:15] >= holdout:
+            continue
         x = T.read_wav(path)
         if len(x) < 3000 or np.abs(x).max() < 1e-3:
             continue

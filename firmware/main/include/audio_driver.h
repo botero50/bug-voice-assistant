@@ -34,6 +34,9 @@ esp_err_t audio_beep(float frequency_hz, int milliseconds);
 
 // Throws away microphone audio for a while, e.g. right after the speaker played.
 void audio_flush_input(int milliseconds);
+// Copies the raw stream (both microphones, 32 kHz, interleaved left/right) into `buffer` until audio_raw_tap_stop(), which returns the int16 count.
+void audio_raw_tap_start(int16_t *buffer, size_t capacity_samples);
+size_t audio_raw_tap_stop(void);
 esp_err_t audio_set_volume(uint8_t volume);
 uint8_t audio_get_volume(void);
 esp_err_t audio_deinit(void);

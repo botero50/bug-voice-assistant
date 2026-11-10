@@ -47,6 +47,8 @@ static lv_obj_t *list = NULL;
 static lv_obj_t *status_label = NULL;
 static lv_obj_t *spinner = NULL;
 static lv_obj_t *rescan_button = NULL;
+static lv_obj_t *back_button = NULL;
+static uint32_t busy_since_ms = 0;  // when the scan or the connection began: neither may last forever
 static lv_timer_t *poll_timer = NULL;
 static view_t view = VIEW_SCANNING;
 static uint32_t result_since_ms = 0;
@@ -75,7 +77,12 @@ static void start_scan(void) {
     scan_running = true;
     scan_finished = false;
     scan_valid = false;
-    xTaskCreate(scan_task, "wifi_scan", 6144, NULL, 4, NULL);
+    busy_since_ms = lv_tick_get();
+    if (xTaskCreate(scan_task, "wifi_scan", 4096, NULL, 4, NULL) != pdPASS) {
+        ESP_LOGW(TAG, "The Wi-Fi scan could not start (not enough memory)");
+        scan_running = false;
+        scan_finished = true;  // the list says there are no networks, and the way out is on the screen
+    }
 }
 
 static void connect_task(void *arg) {
@@ -103,7 +110,14 @@ static void start_connect(void) {
     if (connect_running) return;
     connect_running = true;
     connect_finished = false;
-    xTaskCreate(connect_task, "wifi_connect", 6144, NULL, 4, NULL);
+    busy_since_ms = lv_tick_get();
+    if (xTaskCreate(connect_task, "wifi_connect", 4096, NULL, 4, NULL) != pdPASS) {
+        ESP_LOGW(TAG, "The Wi-Fi connection could not start (not enough memory)");
+        connect_running = false;
+        connect_ok = false;
+        connect_error = NET_ERR_OTHER;
+        connect_finished = true;
+    }
 }
 
 static void password_done(bool accepted, const char *text) {
@@ -135,6 +149,10 @@ static void network_clicked(lv_event_t *e) {
     snprintf(title, sizeof(title), "Contraseña de %s", networks[index].ssid);
     from_keyboard = true;  // so the list isn't scanned again when we come back
     ui_text_entry_open(title, "", true, UI_SCREEN_WIFI, password_done);
+}
+
+static void back_clicked(lv_event_t *e) {
+    ui_nav_go(UI_SCREEN_SETTINGS, LV_SCR_LOAD_ANIM_MOVE_RIGHT);
 }
 
 static void rescan_clicked(lv_event_t *e) {
@@ -236,6 +254,18 @@ static void show_view(view_t next) {
 }
 
 static void poll_cb(lv_timer_t *timer) {
+    if (view == VIEW_SCANNING && !scan_finished && lv_tick_elaps(busy_since_ms) > 20000) {  // the scan never answered
+        ESP_LOGW(TAG, "The Wi-Fi scan took too long");
+        scan_valid = false;
+        network_count = 0;
+        scan_finished = true;
+    }
+    if (view == VIEW_CONNECTING && !connect_finished && lv_tick_elaps(busy_since_ms) > 45000) {  // the connection never answered
+        ESP_LOGW(TAG, "The Wi-Fi connection took too long");
+        connect_ok = false;
+        connect_error = NET_ERR_OTHER;
+        connect_finished = true;
+    }
     if (view == VIEW_SCANNING && scan_finished) {
         scan_finished = false;
         show_view(VIEW_LIST);
@@ -263,6 +293,7 @@ static void screen_deleted_cb(lv_event_t *e) {
     status_label = NULL;
     spinner = NULL;
     rescan_button = NULL;
+    back_button = NULL;
 }
 
 lv_obj_t *ui_wifi_build(void) {
@@ -296,6 +327,18 @@ lv_obj_t *ui_wifi_build(void) {
     lv_label_set_text(rescan_label, LV_SYMBOL_REFRESH "  Buscar de nuevo");
     lv_obj_set_style_text_font(rescan_label, bug_font_small, 0);
     lv_obj_center(rescan_label);
+
+    back_button = lv_btn_create(screen);
+    lv_obj_set_size(back_button, 150, 34);
+    lv_obj_align(back_button, LV_ALIGN_TOP_MID, 0, 368);
+    lv_obj_set_style_bg_color(back_button, lv_color_make(60, 60, 66), 0);
+    lv_obj_set_style_radius(back_button, 17, 0);
+    lv_obj_set_style_shadow_width(back_button, 0, 0);
+    lv_obj_add_event_cb(back_button, back_clicked, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *back_label = lv_label_create(back_button);
+    lv_label_set_text(back_label, LV_SYMBOL_LEFT "  Volver");
+    lv_obj_set_style_text_font(back_label, bug_font_small, 0);
+    lv_obj_center(back_label);
 
     spinner = lv_spinner_create(screen, 1000, 90);
     lv_obj_set_size(spinner, 60, 60);

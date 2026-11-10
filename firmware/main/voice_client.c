@@ -208,7 +208,7 @@ void voice_client_bench(void) {
              up_us ? (long long)(up_bytes * 1000000LL / 1024 / up_us) : 0);
 }
 
-esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, size_t text_size, bool *done) {
+esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, size_t text_size, bool *done, bool *raw) {
     char *json = NULL;
     esp_err_t err = voice_client_fetch_screen("train_next", &json);
     if (err != ESP_OK || !json) {
@@ -223,12 +223,29 @@ esp_err_t voice_client_train_next(char *label, size_t label_size, char *text, si
     cJSON *id = cJSON_GetObjectItem(root, "id");
     cJSON *phrase = cJSON_GetObjectItem(root, "text");
     *done = cJSON_IsTrue(finished);
+    if (raw) *raw = cJSON_IsTrue(cJSON_GetObjectItem(root, "raw"));
     if (!*done && cJSON_IsString(id) && cJSON_IsString(phrase)) {
         strlcpy(label, id->valuestring, label_size);
         strlcpy(text, phrase->valuestring, text_size);
     }
     cJSON_Delete(root);
     return *done || label[0] ? ESP_OK : ESP_FAIL;
+}
+
+esp_err_t voice_client_train_raw(const char *label, const int16_t *stereo32k, size_t bytes) {
+    bug_settings_t settings;
+    settings_copy(&settings);
+    char url[200];
+    snprintf(url, sizeof(url), "%s/train/clip?label=%s&raw=1", settings.server_url, label);
+    esp_http_client_config_t config = {.url = url, .method = HTTP_METHOD_POST, .timeout_ms = 30000};
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) return ESP_FAIL;
+    esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
+    esp_http_client_set_post_field(client, (const char *)stereo32k, (int)bytes);
+    esp_err_t err = esp_http_client_perform(client);
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    return err == ESP_OK && status == 200 ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t voice_client_train_clip(const char *label, const int16_t *pcm, size_t pcm_bytes) {

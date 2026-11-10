@@ -1,6 +1,7 @@
 #include "audio_driver.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include <string.h>
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "driver/i2s_std.h"
@@ -189,6 +190,22 @@ esp_err_t audio_stop_recording(void) {
     return rx_handle ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
+// A tap on the raw microphone stream (both microphones, 32 kHz, interleaved left/right) for the audio lab: while it is on, everything read
+// is also copied to the buffer. Used by the guided recording when the PC asks for raw clips.
+static int16_t *tap_buffer = NULL;
+static size_t tap_capacity = 0, tap_used = 0;
+
+void audio_raw_tap_start(int16_t *buffer, size_t capacity_samples) {
+    tap_used = 0;
+    tap_capacity = capacity_samples;
+    tap_buffer = buffer;
+}
+
+size_t audio_raw_tap_stop(void) {  // the number of int16 values copied (two per microphone frame)
+    tap_buffer = NULL;
+    return tap_used;
+}
+
 esp_err_t audio_read_samples(int16_t *buffer, size_t buffer_size, size_t *read_size) {
     if (!rx_handle || !buffer) {
         return ESP_ERR_INVALID_ARG;
@@ -211,6 +228,10 @@ esp_err_t audio_read_samples(int16_t *buffer, size_t buffer_size, size_t *read_s
         }
 
         size_t got_pairs = got / (4 * sizeof(int16_t));  // two frames, two channels
+        if (tap_buffer && tap_used + got_pairs * 4 <= tap_capacity) {
+            memcpy(tap_buffer + tap_used, stereo, got_pairs * 4 * sizeof(int16_t));
+            tap_used += got_pairs * 4;
+        }
         for (size_t i = 0; i < got_pairs; i++) {
             const int16_t *p = &stereo[i * 4];
             buffer[done + i] = (int16_t)(((int32_t)p[0] + p[1] + p[2] + p[3]) / 4);

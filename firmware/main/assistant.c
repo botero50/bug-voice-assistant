@@ -14,6 +14,7 @@
 #include "stopwatch.h"
 #include "voice_client.h"
 #include "wake_local.h"
+#include "wake_verify.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -617,8 +618,8 @@ static void run_training(int16_t *utterance) {
     int misses = 0, saved = 0;
     for (;;) {
         char label[32] = "", phrase[96] = "";
-        bool done = false;
-        if (voice_client_train_next(label, sizeof(label), phrase, sizeof(phrase), &done) != ESP_OK) {
+        bool done = false, raw = false;
+        if (voice_client_train_next(label, sizeof(label), phrase, sizeof(phrase), &done, &raw) != ESP_OK) {
             set_texts("", "No encuentro el PC para guardar tu voz");
             set_state(ASSISTANT_STATE_NO_SERVER);
             vTaskDelay(pdMS_TO_TICKS(3000));
@@ -639,7 +640,12 @@ static void run_training(int16_t *utterance) {
         audio_set_speaker(false);
         audio_flush_input(150);
 
+        static int16_t *tap = NULL;  // room for 9 s of both microphones at 32 kHz (external memory), made the first time the PC asks for raw clips
+        const size_t tap_samples = 9 * 32000 * 2;
+        if (raw && !tap) tap = heap_caps_malloc(tap_samples * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+        if (raw && tap) audio_raw_tap_start(tap, tap_samples);
         size_t samples = capture_utterance(utterance, 7000, ASSISTANT_STATE_LISTENING, false);
+        size_t tapped = (raw && tap) ? audio_raw_tap_stop() : 0;
         if (samples == 0) {
             if (++misses >= 3) {
                 set_texts("", "No te oí. Seguimos otro día");
@@ -651,6 +657,7 @@ static void run_training(int16_t *utterance) {
         if (voice_client_train_clip(label, utterance, samples * sizeof(int16_t)) == ESP_OK) {
             saved++;
         }
+        if (tapped > 0) voice_client_train_raw(label, tap, tapped * sizeof(int16_t));  // the same moment, from each microphone, for the audio lab
     }
     ESP_LOGI(TAG, "Training session ended: %d clips saved", saved);
     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -811,7 +818,20 @@ static void assistant_task(void *arg) {
         {
             float wake_confidence = 0;
             const char *heard_id = command_local_classify(utterance, samples, &wake_confidence);
-            if (heard_id && strcmp(heard_id, "wake") == 0 && wake_confidence >= 0.65f) {
+            bool recognised = heard_id && strcmp(heard_id, "wake") == 0 && wake_confidence >= 0.65f;
+            if (!recognised && samples >= 6400) {
+                // A second opinion from the board's own greeting check, before the PC is asked (0 in memory turns it off)
+                float needed = wake_verify_threshold();
+                if (needed > 0) {
+                    float greeting = wake_verify_score(utterance, samples);
+                    if (greeting >= needed) {
+                        recognised = true;
+                        wake_confidence = greeting;
+                        ESP_LOGI(TAG, "Greeting accepted by the board's check (%.2f)", greeting);
+                    }
+                }
+            }
+            if (recognised) {
                 ESP_LOGI(TAG, "Wake word recognised on the board (%.2f)", wake_confidence);
                 if (!muted) {
                     // "Hola Bug, qué hora es" in one breath: look for the command in the rest of the sentence

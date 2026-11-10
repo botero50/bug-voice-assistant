@@ -3,6 +3,7 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
 #include "dev_bridge.h"
+#include "wake_verify.h"
 #include "imu.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -61,6 +62,11 @@ static void apply(char *json_text) {
             if (!ok) vTaskDelay(pdMS_TO_TICKS(25));
         }
         printf("BUGCFG IMU {\"found\":%s,\"ok\":%s,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f}\n", imu_available() ? "true" : "false", ok ? "true" : "false", x, y, z);
+    }
+    cJSON *verify = cJSON_GetObjectItem(root, "verify");  // the board's own greeting check: 0 off, 0.7 default; lower accepts more, higher fewer
+    if (cJSON_IsNumber(verify)) {
+        wake_verify_set_threshold((float)verify->valuedouble);
+        strlcat(done, " verify", sizeof(done));
     }
     const char *hear = text_of(root, "hear");  // for testing: pretend these words were heard, e.g. "tengo correos"
     if (hear && hear[0]) {
@@ -121,9 +127,9 @@ static void apply(char *json_text) {
     if (cJSON_GetObjectItem(root, "status")) {
         char mail_user[64] = "";
         local_mail_user(mail_user, sizeof(mail_user));
-        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s,\"mailbox\":%s,\"wifi2\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
+        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s,\"mailbox\":%s,\"wifi2\":%s,\"verify\":%.2f}\n", settings.wifi_ssid, settings.server_url, mail_user,
                local_calendar_configured() ? "true" : "false", dev_bridge_paired() ? "true" : "false",
-               dev_bridge_relay_configured() ? "true" : "false", network_manager_has_backup() ? "true" : "false");
+               dev_bridge_relay_configured() ? "true" : "false", network_manager_has_backup() ? "true" : "false", wake_verify_threshold());
     } else {
         printf("BUGCFG OK%s\n", done[0] ? done : " nothing-to-change");
     }
