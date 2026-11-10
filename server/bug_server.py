@@ -3,6 +3,7 @@
 The board sends 16 kHz, 16-bit mono PCM to /listen and gets back an action
 header plus, for replies, 16 kHz PCM it can play directly.
 """
+import llm_chat
 import asyncio
 import difflib
 import functools
@@ -805,6 +806,9 @@ def run_skill(text):
             if result is None:  # the skill looked and decided the sentence isn't for it
                 continue
             return result if isinstance(result, tuple) else (result, None)
+    chat = llm_chat.ask(text)  # last resort: a small model on this PC answers freely
+    if chat:
+        return chat, None
     return FALLBACK, None
 
 
@@ -1194,6 +1198,7 @@ def announce_on_network():
 
 if __name__ == "__main__":
     model = load_model()
+    llm_chat.warm_up()
     announcement = announce_on_network()
     if TTS_ENGINE in ("auto", "piper") and piper_ready():
         piper_pcm("Hola")  # the first sentence is slow; warm it up now
