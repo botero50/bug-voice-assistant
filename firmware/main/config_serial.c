@@ -11,6 +11,8 @@
 #include "local_skills.h"
 #include "network_manager.h"
 #include "settings_store.h"
+#include "sd_seed.h"
+#include "config_backup.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -87,6 +89,21 @@ static void apply(char *json_text) {
         strlcat(done, dev_token[0] ? " dev-paired" : " dev-unpaired", sizeof(done));
     }
 
+    const char *mqtt = text_of(root, "mqtt");  // mqtt://user:password@host:1883, the smart-home broker (empty removes it)
+    if (mqtt) {
+        local_home_set_broker(mqtt);
+        strlcat(done, mqtt[0] ? " mqtt" : " mqtt-removed", sizeof(done));
+    }
+    cJSON *restore = cJSON_GetObjectItem(root, "sd_restore");  // puts the example skills and smart-home files back on the card
+    if (restore && cJSON_IsTrue(restore)) {
+        sd_seed_defaults(true);
+        strlcat(done, " sd-restored", sizeof(done));
+    }
+    const char *mqtt_test = text_of(root, "mqtt_test");
+    if (mqtt_test) {
+        local_home_test(mqtt_test);
+        strlcat(done, " mqtt-test", sizeof(done));
+    }
     const char *relay = text_of(root, "relay");  // https://bug.headlessqa.com: the internet mailbox used away from home (empty removes it)
     if (relay) {
         dev_bridge_set_relay(relay);
@@ -129,10 +146,19 @@ static void apply(char *json_text) {
     if (cJSON_GetObjectItem(root, "status")) {
         char mail_user[64] = "";
         local_mail_user(mail_user, sizeof(mail_user));
-        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s,\"mailbox\":%s,\"wifi2\":%s,\"verify\":%.2f}\n", settings.wifi_ssid, settings.server_url, mail_user,
+        printf("BUGCFG STATUS {\"wifi\":\"%s\",\"server\":\"%s\",\"mail\":\"%s\",\"calendar\":%s,\"dev\":%s,\"mailbox\":%s,\"wifi2\":%s,\"verify\":%.2f,\"mqtt\":%s,\"backup\":%s}\n", settings.wifi_ssid, settings.server_url, mail_user,
                local_calendar_configured() ? "true" : "false", dev_bridge_paired() ? "true" : "false",
-               dev_bridge_relay_configured() ? "true" : "false", network_manager_has_backup() ? "true" : "false", wake_verify_threshold());
+               dev_bridge_relay_configured() ? "true" : "false", network_manager_has_backup() ? "true" : "false", wake_verify_threshold(),
+               local_home_broker_configured() ? "true" : "false", config_backup_enabled() ? "true" : "false");
     } else {
+        cJSON *backup = cJSON_GetObjectItem(root, "backup");  // 0 turns the copy on the card off (and deletes it), 1 turns it on
+        if (backup) {
+            bool on = cJSON_IsTrue(backup) || (cJSON_IsNumber(backup) && backup->valueint != 0);
+            config_backup_enable(on);
+            strlcat(done, on ? " backup-on" : " backup-off", sizeof(done));
+        }
+        if (cJSON_IsString(forget) && strcmp(forget->valuestring, "all") == 0) config_backup_delete();
+        else config_backup_request();
         printf("BUGCFG OK%s\n", done[0] ? done : " nothing-to-change");
     }
     ESP_LOGI(TAG, "Configuration received:%s", done[0] ? done : " nothing");

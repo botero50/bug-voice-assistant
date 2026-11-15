@@ -56,6 +56,13 @@ bool local_weather_brief(char *out, size_t size);
 bool local_calendar_brief(char *out, size_t size);
 // Translation, favourite stations, books from the card and the morning briefing
 bool local_more_try(const char *original, const char *text, local_answer_t *a);
+// Skills the owner wrote as text files in /sd/skills on the card
+bool local_sdskills_try(const char *text, local_answer_t *a);
+// The smart home over MQTT ("enciende la luz de la sala"); the devices are listed in /sd/home/devices.txt
+bool local_home_try(const char *text, local_answer_t *a);
+// Who is speaking: "registra mi voz como María", "quién soy", "olvida mi voz"
+bool local_voiceid_try(const char *original, const char *text, local_answer_t *a);
+void local_home_set_broker(const char *url);  // "mqtt://user:password@host:1883"; empty removes it (the PC running the server is used then)
 bool local_claude_try(const char *text, local_answer_t *a);  // approve / reject / "cómo va Claude" / "dile a Claude que ..."
 bool local_help_try(const char *text, local_answer_t *a);  // "qué puedes hacer": a spoken tour of the skills
 void ls_speak_lang(local_answer_t *a, const char *text, const char *lang);

@@ -53,6 +53,9 @@ void assistant_listen_now(void);
 // Switches the microphone off or on.
 void assistant_set_muted(bool muted);
 
+// Who spoke the last command, if the board knows that voice (see voice_id.h). False when nobody is registered or it is not sure.
+bool assistant_current_speaker(char *name, size_t size, float *score);
+
 // Last exchanges, newest first (index 0). Returns false past the end.
 bool assistant_history_get(int index, char *heard, size_t heard_size, char *reply, size_t reply_size);
 

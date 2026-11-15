@@ -221,6 +221,17 @@ bool local_skills_try(const char *original, local_answer_t *a) {
     if (local_claude_try(text, a)) {
         return true;
     }
+    // The owner's own skills from the card come before the built-in ones, so a phrase of theirs wins
+    if (local_sdskills_try(text, a)) {
+        return true;
+    }
+    // The smart home: only claims a sentence when it names a device from the card's list
+    if (local_home_try(text, a)) {
+        return true;
+    }
+    if (local_voiceid_try(original, text, a)) {
+        return true;
+    }
     // The shopping list and the notes (the board keeps them itself)
     if (local_lists_try(original, a)) {
         return true;

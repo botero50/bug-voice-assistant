@@ -22,6 +22,8 @@
   a { color:var(--accent); }
   li { margin:.2rem 0; }
   label { display:block; margin:.7rem 0 0; font-size:.92rem; color:var(--muted); }
+  label.check { display:flex; gap:.6rem; align-items:flex-start; }
+  label.check input { width:auto; margin-top:.2rem; flex:none; }
   input { display:block; width:100%; margin-top:.25rem; padding:.55rem .7rem; font:inherit; color:var(--ink); background:#121212; border:1px solid var(--line); border-radius:8px; }
   button.plain { background:transparent; color:var(--ink); border:1px solid var(--line); }
   details { margin:.6rem 0 0; } summary { cursor:pointer; color:var(--accent); }
@@ -52,7 +54,9 @@
     </esp-web-install-button>
     <p class="note"><b>Coming from another firmware?</b> Installing Bug replaces whatever is
       on the board. Turn on <b>Erase device</b> for a clean start. This also deletes any saved
-      data from the old firmware, so back it up first.</p>
+      data from the old firmware, so back it up first. Bug's own settings are safe if its microSD card stays in the board:
+      it keeps a copy there and restores it by itself after the reinstall (restarting once). Without a card, fill in
+      "Set up the board" below again.</p>
   </div>
 
   <h2>Set up the board</h2>
@@ -82,9 +86,16 @@
     <label>PC address (only if you also run the Bug server; leave empty to find it automatically)
       <input id="cfg-server" autocomplete="off" placeholder="192.168.1.4"></label>
 
+    <label>Smart-home broker (MQTT; leave empty to use the PC that runs the Bug server)
+      <input id="cfg-mqtt" type="password" autocomplete="off" placeholder="mqtt://user:password@192.168.1.4:1883"></label>
+
+    <label class="check"><input id="cfg-backup" type="checkbox" checked> Keep a copy of the board's settings on its microSD card
+      (so a reinstall with "Erase device" does not lose them; the copy holds the passwords in plain text, so keep the card with the board)</label>
+
     <p>
       <button id="cfg-send">📡 Send to the board</button>
       <button id="cfg-status" class="plain">What does the board have?</button>
+      <button id="cfg-restore" class="plain">Put the example files back on the card</button>
       <button id="cfg-forget" class="plain">Forget everything</button>
     </p>
     <p id="cfg-result" class="note" role="status"></p>
@@ -157,6 +168,9 @@
     if (value('cfg-ics')) payload.ics = value('cfg-ics').replace(/^webcal:\/\//, 'https://');
     if (value('cfg-server')) payload.server = value('cfg-server');
     if (value('cfg-dev')) payload.dev_token = value('cfg-dev');
+    if (value('cfg-mqtt')) payload.mqtt = value('cfg-mqtt');
+    // The copy on the card is on by default; the box only sends something when it was turned off, or when other things are sent (so it is saved)
+    if (!document.getElementById('cfg-backup').checked) payload.backup = 0;
     if (!Object.keys(payload).length) { show('Fill in at least one thing to send.', true); return; }
     const answer = await talk(payload);
     if (!answer) return;
@@ -174,12 +188,18 @@
     try {
       const info = JSON.parse(answer.replace('BUGCFG STATUS ', ''));
       show('Wi-Fi: ' + (info.wifi || 'not set') + ' · Mail: ' + (info.mail || 'not set') + ' · Calendar: ' + (info.calendar ? 'set' : 'not set') +
-           ' · PC: ' + (info.server || 'automatic'));
+           ' · PC: ' + (info.server || 'automatic') + ' · Smart home: ' + (info.mqtt ? 'broker set' : 'uses the PC') +
+           ' · Copy on the card: ' + (info.backup === false ? 'off' : 'on'));
     } catch (e) { show(answer, true); }
   });
 
+  document.getElementById('cfg-restore').addEventListener('click', async () => {
+    const answer = await talk({ sd_restore: true });
+    if (answer) show(answer.startsWith('BUGCFG OK') ? 'Done: the example skills and smart-home files are on the card again.' : 'The board refused it: ' + answer, !answer.startsWith('BUGCFG OK'));
+  });
+
   document.getElementById('cfg-forget').addEventListener('click', async () => {
-    if (!confirm('Remove the Wi-Fi, mail and calendar from the board?')) return;
+    if (!confirm('Remove the Wi-Fi, mail, calendar and the copy kept on the card from the board?')) return;
     const answer = await talk({ forget: 'all' });
     if (answer) show('Done: ' + answer.replace('BUGCFG OK', '').trim());
   });

@@ -12,6 +12,8 @@
 #include "nvs_flash.h"
 #include "voice_loop.h"
 #include "microsd_manager.h"
+#include "sd_seed.h"
+#include "config_backup.h"
 #include "power_manager.h"
 #include "audio_driver.h"
 #include "alarms.h"
@@ -30,8 +32,6 @@ void config_serial_start(void);
 #include "audio_circular_buffer.h"
 #include "power_profile_manager.h"
 #include "periodic_listener.h"
-#include "speaker_identification.h"
-#include "speaker_context_manager.h"
 #include "ui_core.h"
 #include "ui_home.h"
 #include "ui_config.h"
@@ -239,6 +239,12 @@ void app_main(void) {
         uint64_t free = microsd_get_free_space();
         uint64_t total = microsd_get_total_space();
         ESP_LOGI(TAG, "  Storage: %.2f GB / %.2f GB free", free / 1e9, total / 1e9);
+        if (config_backup_restore_if_needed()) {
+            ESP_LOGW(TAG, "Settings restored from the card: restarting once to use them");
+            vTaskDelay(pdMS_TO_TICKS(300));
+            esp_restart();
+        }
+        sd_seed_defaults(false);  // the example skills and smart-home files, the first time this card is used
     }
 
     // Initialize audio driver
@@ -273,19 +279,6 @@ void app_main(void) {
         ESP_LOGW(TAG, "⚠ Periodic listener initialization failed");
     } else {
         ESP_LOGI(TAG, "✓ Periodic listener ready (can switch to low-power mode)");
-    }
-
-    // Initialize speaker identification
-    ESP_LOGI(TAG, "Initializing speaker identification...");
-    if (speaker_id_init() != ESP_OK) {
-        ESP_LOGW(TAG, "⚠ Speaker ID initialization failed");
-    } else {
-        ESP_LOGI(TAG, "✓ Speaker ID ready (multi-user support enabled)");
-        int num_profiles = speaker_id_get_profile_count();
-        ESP_LOGI(TAG, "  Enrolled speakers: %d", num_profiles);
-        if (num_profiles > 0) {
-            speaker_id_print_profiles();
-        }
     }
 
     // Initialize power manager

@@ -36,11 +36,23 @@ def main():
     parser.add_argument("port", nargs="?", help="the board's serial port, e.g. COM5 (found by itself when there is only one)")
     parser.add_argument("--relay", help="address of the internet mailbox, e.g. https://bug.headlessqa.com (for use away from home)")
     parser.add_argument("--ssid2", help="name of a second Wi-Fi, e.g. your phone's hotspot")
+    parser.add_argument("--mqtt", action="store_true", help="also give it the smart-home broker address kept in server/mqtt_url.txt (made by Instalar.bat -SmartHome)")
     args = parser.parse_args()
     port = args.port or find_port()
     if not port:
         sys.exit("I could not tell which port is the board. Run it again with the port, for example COM5.")
-    line = ("BUGCFG " + json.dumps({"dev_token": dev_bridge.token()}) + "\n").encode()
+    settings = {"dev_token": dev_bridge.token()}
+    if args.relay:
+        settings["relay"] = args.relay.rstrip("/")
+    if args.ssid2:
+        settings["ssid2"] = args.ssid2
+        settings["pass2"] = getpass.getpass(f'Password of "{args.ssid2}" (not shown, not stored here): ')
+    if args.mqtt:
+        url_file = Path(__file__).resolve().parents[1] / "mqtt_url.txt"
+        if not url_file.exists():
+            sys.exit("server/mqtt_url.txt is missing: run scripts/Instalar.bat -SmartHome first (or write the address in it yourself).")
+        settings["mqtt"] = url_file.read_text(encoding="utf-8").strip()
+    line = ("BUGCFG " + json.dumps(settings) + "\n").encode()
     with serial.Serial(port, 115200, timeout=0.3) as board:
         board.dtr = False
         board.rts = False
@@ -51,7 +63,8 @@ def main():
             time.sleep(1.2)
             heard += board.read(board.in_waiting or 1).decode(errors="replace")
             if "BUGCFG OK" in heard:
-                print(f"Paired: the board on {port} now has the token.")
+                extras = "".join(f", {name}" for name in ("relay", "ssid2", "mqtt") if name in settings)
+                print(f"Done: the board on {port} now has the token{extras}.")
                 return
     sys.exit("The board did not answer. Is Bug installed and the cable plugged in?")
 

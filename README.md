@@ -1,418 +1,98 @@
-# 🎤 Bug Voice Assistant - ESP32-S3 AMOLED
+# Bug: a Colombian-Spanish voice assistant on an ESP32-S3 round display
 
-**Spanish voice assistant for the Waveshare ESP32-S3-Touch-AMOLED-1.75 round display.**
+Bug is a voice assistant that lives on a **Waveshare ESP32-S3-Touch-AMOLED-1.75** (466x466 round screen, two microphones, speaker).
+It answers by itself first, with free online services second, and uses a PC only as the last resort.
 
-**[Install the firmware from your browser](https://botero50.github.io/bug-voice-assistant/)** (desktop Chrome or Edge)
+**[Install the firmware from your browser](https://botero50.github.io/bug-voice-assistant/)** (desktop Chrome or Edge, board plugged in by USB).
 
-- **Status:** 🚧 Preview. The firmware compiles but hasn't been tested on a board. Listening, answers, touch and the connection to the server aren't working on the device yet, so some features below are still planned.
-- **Code:** 8,829 lines (firmware + backend)
-- **Services:** 19 Docker containers
-- **Skills:** 15+ (entertainment + productivity)
-- **Battery Life:** 8-14 days (Always-Listening mode)
-- **Languages:** Spanish (primary) + English
+## How it answers (in this order)
 
----
+1. **The board alone, no internet:** time, date, timers, alarms, stopwatch, notes and shopping list, math, units, holidays, games, riddles, music from the microSD, the 28 spoken commands, "qué puedes hacer".
+2. **The board plus free online services:** weather (Open-Meteo), prices, radio, news, jokes, Wikipedia, translation, e-mail (IMAP), agenda (ICS links). The board talks to them itself and speaks with a free online voice.
+3. **The PC (last resort):** speech recognition for the wake word check (Whisper on the GPU), skills that need the PC (your music library, books, the Claude Code bridge) and, when no skill understands a sentence, **free conversation with a local model** (Ollama, `qwen3:8b`).
 
-## ✨ Features
+The wake word "Hola Bug" is detected on the board (a small neural network plus an on-board verifier) before anything is sent to the PC.
+Conversation memory: the last 5 exchanges survive a restart, "repite lo último", and follow-ups like "y mañana" / "y el euro".
 
-### Voice System
-- ✅ Wake word detection ("Hey Bug")
-- ✅ Speech-to-text (Spanish/English, faster-whisper)
-- ✅ Language understanding (Claude API)
-- ✅ Speech synthesis (Piper TTS, bilingual)
-- ✅ Multi-turn conversation memory
-- ✅ Multi-user support (speaker identification)
+Extra: **Claude Code from the board** (approve or reject permissions, "cómo va Claude", "dile a Claude que continúe", a small screenshot of the PC), at home or away through a Cloudflare Worker mailbox (`bug-gateway`, see below).
 
-### Entertainment (15+ Skills)
-- **Games:** Akinator, Tic-Tac-Toe, 2048
-- **Info:** Weather, Crypto, Radio
-- **Content:** Stories, Books, Jokes
-- **Games:** Trivia, Riddles, Word games
+## Set up from zero
 
-### Productivity
-- **Email:** Gmail + Outlook
-- **Calendar:** Merged calendar view
-- **Memory:** Conversation history per user
+You need: the board, a USB-C cable, a Windows 11 PC (an NVIDIA GPU is optional but makes speech recognition fast) and your home Wi-Fi.
 
-### Smart Home
-- **Devices:** Lights, thermostat, locks, speakers
-- **Automations:** Good Night, Leave Home
-- **Scenes:** Morning, Night, Movie time
+1. **Get the code:** `git clone https://github.com/botero50/bug-voice-assistant.git`
+2. **Run the installer** (double-click, or in a terminal; safe to run again):
+   ```
+   scripts\Instalar.bat            server + local voice + Ollama chat model + desktop shortcut
+   scripts\Instalar.bat -All       also board build tools, Claude Code hooks, training environment
+   ```
+   What it sets up: Python 3.12, the server environment `%USERPROFILE%\bug-venv`, the Piper offline voice, the Windows Firewall rule (needs an administrator window; otherwise choose "Private networks" when Windows asks), Ollama and the `qwen3:8b` model.
+   With `-Firmware`: ESP-IDF 5.3.2 in `%USERPROFILE%\esp\esp-idf` and the build junction. With `-ClaudeHooks`: the hooks for Claude Code. With `-Train`: PyTorch for training the voice models.
+3. **Start the server:** the installer already makes it **start with Windows** (a shortcut in your Startup folder, minimized; `-NoAutostart` skips it, `-RemoveAutostart` takes it away) and checks that the Ollama chat model answers. To start it by hand: double-click **`Iniciar Bug.bat`** (or the "Iniciar Bug" shortcut the installer put on the desktop). The first start downloads the speech model (about 1.6 GB). Leave the window open. Check `http://127.0.0.1:5000/health`.
+4. **Put the firmware on the board:** open the installer page above and press Install, **or** build it yourself: `scripts\flash.ps1 -Port COM5`.
+5. **Configure the board** (Wi-Fi, Gmail, calendar, PC address): on the same installer page, scroll to **Set up the board**. You type your own passwords there; they go straight to the board over USB and nowhere else.
+6. **Give the PC a fixed address** in your router (the board finds the server by name, but a reserved IP is more reliable).
+7. Say **"Hola Bug, qué puedes hacer"**.
 
-### Power (8-14 days battery)
-- **Always-Listening:** 10mA average
-- **Periodic:** 2.5mA average
-- **Gesture-Only:** 0.5mA average
+Showing it to someone: **[docs/DEMO.md](docs/DEMO.md)** has a five-minute script, and `scripts\demo_check.ps1 -Port COM5` checks the demo phrases on your board first.
 
----
+Everything else (city, music folder, books, calendar, e-mail, recording your voice to improve the wake word, training) is in **[SETUP.md](SETUP.md)**.
 
-## 🚀 Quick Start
+## Day to day
 
-### 1. Start Backend Services
+| I want to... | Do this |
+| --- | --- |
+| Start the server | `Iniciar Bug.bat` |
+| Rebuild and flash the board | `scripts\flash.ps1 -Port COM5` (`-NoFlash` only compiles) |
+| Check the server | `http://127.0.0.1:5000/health`; tests: `server\run_tests.ps1`, `python server\dev_bridge_test.py` |
+| Test a phrase on the board without speaking | send `BUGCFG {"hear":"qué hora es"}` over USB (the installer page has a test box) |
+| See the board's memory | `BUGCFG {"mem":1}` over USB |
+| Use another chat model | `set BUG_LLM_MODEL=<model>` before starting; `BUG_LLM=0` turns free chat off |
+| Pair the board with the dev bridge | `python server\tools\pair_board.py COM5` (Wi-Fi password typed in the prompt) |
+| Let Claude Code talk to the board | `python server\tools\install_claude_hooks.py --apply` (`--remove` undoes it) |
+| Try the smart home with no devices | `python server\tools\sim_home.py`, then say "enciende la luz de la sala" (needs `/sd/home/devices.txt`, see SETUP.md 8f) |
+| Use it away from home | the gateway (below), then `python server\tools\gateway_setup.py` |
 
-```bash
-cd "voice assitance"
+## Away from home: the gateway
 
-# Build and run all services
-docker-compose build
-docker-compose up
-
-# Test in another terminal:
-curl http://localhost:8080        # Web UI
-curl http://localhost:5000/health # Orchestrator
-curl http://localhost:5101/emails # Gmail mock
-```
-
-### 2. Build Firmware (Optional Now)
-
-```bash
-# Install ESP-IDF 5.1
-git clone https://github.com/espressif/esp-idf.git --branch v5.1
-cd esp-idf && ./install.sh esp32s3
-
-# Build
-cd firmware && idf.py build
-
-# Output: build/firmware.bin
-```
-
-### 3. When Hardware Arrives
-
-```bash
-# Prepare MicroSD (see HARDWARE.md)
-# Download models to microsd_files/models/
-
-# Flash firmware
-idf.py flash -p /dev/ttyUSB0
-
-# Monitor boot
-idf.py monitor
-```
-
----
-
-## 🛠️ Hardware You Need
-
-### Required
-- **ESP32-S3 1.75" AMOLED Round** - [Buy Here](https://www.amazon.com/ESP32-S3-Development-Interface-Microphone-Interaction/dp/B0F8867487/)
-  - Dual microphone array ✓
-  - 2W speaker built-in ✓
-  - Round AMOLED display ✓
-  - WiFi + Bluetooth 5.0 ✓
-
-- **MicroSD Card 128GB+** (~$15-25)
-- **5V 2A Power Supply** (~$10-15)
-- **USB-C Cable** (~$3-5)
-
-### Optional
-- **SIM7670G 4G Module** (~$25-40) - for cellular fallback
-- **SIM Card 4G** (~$1-5)
-
-### You Already Have
-- ✅ GPS Module (u-blox MAX-M8Q)
-
-**Total:** $83-118 (without 4G), ~$108-158 (with 4G)
-
----
-
-## 📋 Repository Structure
+The board and the PC both connect **out** to a small mailbox on Cloudflare Workers (`bug-gateway`: Worker plus a Durable Object, HMAC-signed requests, allowed commands only). Nothing on the PC is opened to the internet.
+Its source lives in the company web project, `F:\Automation company\bug-gateway` (its README has the deploy steps). On a new PC:
 
 ```
-voice-assistant/
-├── README.md                ← You are here
-├── HARDWARE.md              ← Setup instructions
-├── docker-compose.yml       ← 12 backend services
-├── .env.example             ← Config template
-│
-├── services/                ← Python/Flask backend
-│   ├── stt/                 ← Speech-to-text
-│   ├── llm/                 ← Language model
-│   ├── tts/                 ← Text-to-speech
-│   ├── orchestrator/        ← Coordinator
-│   ├── gmail/               ← Gmail integration
-│   ├── outlook/             ← Outlook integration
-│   ├── calendar_merger/     ← Calendar sync
-│   ├── email_composer/      ← Email drafting
-│   ├── wake_word/           ← Wake word detection
-│   ├── power_optimizer/     ← Power simulation
-│   ├── speaker_identification/ ← User ID
-│   ├── model_optimizer/     ← Model optimization
-│   └── web/                 ← Web UI
-│
-├── firmware/                ← C code for ESP32-S3
-│   ├── main/
-│   │   ├── main.c           ← Boot sequence
-│   │   ├── voice_loop.c     ← Audio pipeline
-│   │   ├── microsd_manager.c
-│   │   ├── power_manager.c
-│   │   ├── audio_driver.c
-│   │   ├── network_manager.c
-│   │   ├── sim7670g_driver.c ← 4G module
-│   │   ├── cellular_manager.c
-│   │   ├── ppp_client.c
-│   │   ├── http_cellular_client.c
-│   │   ├── wake_word_detector.c
-│   │   ├── speaker_identification.c
-│   │   └── include/         ← Headers
-│   └── CMakeLists.txt
-│
-├── microsd_files/           ← Prepare for device
-│   ├── models/
-│   │   ├── whisper_base.onnx (download)
-│   │   └── piper_es_CO.onnx (download)
-│   ├── configs/
-│   │   ├── device_config.json
-│   │   ├── voice_params.json
-│   │   └── power_profile.json
-│   └── data/
-│
-└── config/, logs/           ← Runtime
+python server\tools\gateway_setup.py        makes the tokens (never printed) and server\dev_relay.json
+# then, in the gateway folder, the two commands it prints (wrangler secret put ...) and: npx wrangler deploy
 ```
 
----
+After deploying the gateway, stop the Bug server for about 45 seconds so the mailbox restarts with the new code.
 
-## 🔧 Configuration
+## Private files (never committed)
 
-Copy template and edit:
+`server/dev_token.txt`, `server/pc_token.txt`, `server/dev_relay.json`, `server/dev_claude.json`, `server/mail_accounts.json`, `server/calendar_sources.txt`, `firmware/main/bug_config.local.h`, `server/wake_data/`, `server/dev_runs/`, `server/dev_audit.log`. Wi-Fi, Gmail and tokens are typed by you; no script here stores or prints them.
 
-```bash
-cp .env.example .env
-nano .env
+## Repository map
+
+```
+Iniciar Bug.bat          starts the server (uses %USERPROFILE%\bug-venv)
+scripts/                 Instalar.bat/.ps1 (set up a new PC), flash.ps1 (build + flash)
+firmware/                ESP-IDF 5.3 project (C, LVGL 8): assistant, skills, UI, audio, wake word, dev bridge
+server/                  Python server (Flask): Whisper, voices, skills, Claude bridge, free chat (llm_chat.py)
+server/tools/            pair_board, gateway_setup, Claude Code hooks, notifier
+server/wake/             wake-word and command training and evaluation tools
+web/                     the browser installer page (GitHub Pages; built by .github/workflows/installer.yml)
+docs/                    IMPROVEMENT_PLAN.md (current plan and results), DEV_BRIDGE_PLAN.md, SKILLS.md, GAMES.md, TESTING.md, ...
+SETUP.md                 every configuration step in order
+ARCHITECTURE.md  HARDWARE.md  CREDITS.md
+legacy/                  the first (Docker) design, kept for reference, not used today (see legacy/README.md)
+.github/workflows/       installer.yml (builds the firmware and the installer page), tests.yml (host tests on every push)
 ```
 
-Key settings:
-- `MOCK_MODE=true` - Use mock services (no API key needed)
-- `ANTHROPIC_API_KEY=` - When ready, add your Claude API key
-- `GMAIL_CLIENT_ID=` - Optional: Gmail OAuth
-- `OUTLOOK_CLIENT_ID=` - Optional: Outlook OAuth
+## Status
 
----
+Running on the real board. The current plan, measurements and what is left are in **[docs/IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md)**. Untested by a person so far: the wake-word verifier in daily use and the Cloudflare rate-limit rules.
 
-## 📥 Installation
+## Hardware
 
-### Prerequisites
+- **Waveshare ESP32-S3-Touch-AMOLED-1.75**: round AMOLED, ES7210 microphones (two), ES8311 speaker codec, QMI8658 motion sensor, 8 MB PSRAM, microSD. Pins: [docs/HARDWARE_PINS.md](docs/HARDWARE_PINS.md), details: [HARDWARE.md](HARDWARE.md).
+- A microSD card (music, books) and a USB-C cable.
 
-```bash
-# macOS
-brew install docker python@3.11
-
-# Linux (Ubuntu)
-sudo apt install docker.io python3.11
-
-# Windows
-# Download Docker Desktop
-```
-
-### Start Services
-
-```bash
-cd "voice assitance"
-
-# First time
-docker-compose build
-
-# Start
-docker-compose up
-
-# Or background
-docker-compose up -d
-```
-
-### Test
-
-```bash
-# Web UI
-http://localhost:8080
-
-# Type Spanish: "Hola, ¿cómo estás?"
-# Should get audio response with mock data
-```
-
----
-
-## 🔑 When You Have API Keys
-
-### Anthropic Claude
-```bash
-1. Get key from: https://console.anthropic.com
-2. Add to .env: ANTHROPIC_API_KEY=sk-ant-...
-3. Restart: docker-compose restart llm
-```
-
-### Gmail OAuth (Optional)
-```bash
-1. Google Cloud Console
-2. Create OAuth 2.0 credentials
-3. Add to .env: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET
-4. Redirect URI: http://localhost:5101/auth/callback
-```
-
-### Outlook OAuth (Optional)
-```bash
-1. Azure AD Console
-2. Register application
-3. Add to .env: OUTLOOK_CLIENT_ID, OUTLOOK_CLIENT_SECRET
-4. Redirect URI: http://localhost:5102/auth/callback
-```
-
----
-
-## 📥 When Hardware Arrives
-
-### 1. Download Models (~200 MB)
-
-```bash
-# Download from GitHub:
-# whisper_base.onnx (~150 MB)
-#   → https://github.com/openai/whisper/releases
-# piper_es_CO.onnx (~50 MB)
-#   → https://github.com/rhasspy/piper
-
-# Place in:
-microsd_files/models/
-```
-
-### 2. Prepare MicroSD Card
-
-```bash
-# Format as FAT32
-# Copy entire microsd_files/ contents to card root
-# Insert into device
-```
-
-### 3. Flash Firmware
-
-```bash
-cd firmware
-
-# Build (first time)
-idf.py build
-
-# Flash to device
-idf.py flash -p /dev/ttyUSB0  # macOS/Linux
-idf.py flash -p COM3          # Windows
-
-# Monitor boot
-idf.py monitor
-```
-
-### 4. Test on Device
-
-- Power on
-- Say: "Hola Bug" (when Phase 4 wake word enabled)
-- Check serial monitor for logs
-- Verify audio in/out
-- Test battery consumption
-
----
-
-## 🎤 Services & Ports
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| Web UI | 8080 | Browser interface |
-| Orchestrator | 5000 | Coordinator |
-| STT | 5001 | Speech-to-text |
-| LLM | 5002 | Language model |
-| TTS | 5003 | Text-to-speech |
-| Gmail | 5101 | Email integration |
-| Outlook | 5102 | Email integration |
-| Calendar Merger | 5103 | Calendar sync |
-| Email Composer | 5104 | Email drafting |
-| Wake Word | 5105 | Wake detection |
-| Power Optimizer | 5108 | Power simulation |
-| Speaker ID | 5109 | User identification |
-| Model Optimizer | 5110 | Model compression |
-
----
-
-## 🔋 Power Estimates
-
-| Mode | Current | Battery Life |
-|------|---------|--------------|
-| Idle (PSM) | 1-5 mA | 100+ days |
-| WiFi idle | 10-20 mA | 6-12 days |
-| Voice processing | 50-100 mA | — |
-| 4G transfer | 300-500 mA | — |
-| Peak | 500-1000 mA | — |
-
-Based on 2000 mAh battery
-
----
-
-## ✅ What's Complete
-
-- [x] 12 backend services (Docker)
-- [x] ~2,500 lines C firmware
-- [x] ~2,000 lines Python services
-- [x] Voice loop (STT→LLM→TTS)
-- [x] Email & Calendar integration
-- [x] Wake word detection
-- [x] Speaker identification
-- [x] Power optimization
-- [x] 4G cellular support
-- [x] Mock mode everywhere (test without API keys)
-
----
-
-## 🚧 Future
-
-| Phase | Status |
-|-------|--------|
-| Wake word "Hola Bug" | ✅ Built |
-| Power profiles | ✅ Built |
-| Speaker ID | ✅ Built |
-| Model optimization | ✅ Built |
-| Display UI | 🟡 Designed |
-| SMS/Calls | 🔜 Not started |
-| GPS | 🔜 Not started |
-| Smart home | 🔜 Not started |
-| OTA updates | 🔜 Not started |
-
----
-
-## 🐛 Troubleshooting
-
-### Services won't start
-```bash
-docker-compose logs
-docker-compose down && docker-compose up --build
-```
-
-### Port in use
-```bash
-lsof -i :8080  # Check what's using port
-docker-compose restart web
-```
-
-### Firmware build fails
-```bash
-source ~/esp-idf/export.sh
-cd firmware && idf.py fullclean && idf.py build
-```
-
-### No LLM response
-```bash
-# Check MOCK_MODE enabled
-grep MOCK_MODE .env
-
-# If real API: export ANTHROPIC_API_KEY=sk-ant-...
-docker-compose restart llm
-```
-
----
-
-## 📞 Support
-
-Check logs first:
-```bash
-docker-compose logs orchestrator
-docker-compose logs llm
-docker-compose logs wake_word
-```
-
----
-
-**Status:** ✅ Ready to deploy  
-**Date:** November 2026  
-**Maintainer:** You (local repository)
+Credits: [CREDITS.md](CREDITS.md).

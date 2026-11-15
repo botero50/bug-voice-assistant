@@ -6,7 +6,8 @@
 #include <string.h>
 
 // Lowercase, no accents, one space between words, spaces at both ends
-static void norm(const char *in, char *out, size_t size) {
+void local_context_normalize(const char *in, char *out, size_t size) {
+    if (size < 4) { if (size) out[0] = 0; return; }
     size_t o = 0;
     out[o++] = ' ';
     for (const unsigned char *p = (const unsigned char *)in; *p && o + 2 < size; p++) {
@@ -55,7 +56,7 @@ static const char *after_and(const char *original) {
 
 bool local_context_is_repeat(const char *original) {
     char t[160];
-    norm(original, t, sizeof(t));
+    local_context_normalize(original, t, sizeof(t));
     static const char *const phrases[] = {"repite", "repitelo", "repite eso", "repite lo ultimo", "repite lo que dijiste", "que dijiste", "que dijiste otra vez",
                                           "otra vez", "dilo otra vez", "no te escuche", "no entendi", "como", "repetir", "puedes repetir", "me lo repites", NULL};
     // the whole sentence must be one of them (a "como" inside "cómo está el clima" is not a request to repeat)
@@ -71,9 +72,9 @@ bool local_context_expand(const char *original, const char *last_heard, char *ou
     const char *rest = after_and(original);
     if (!rest || !*rest || !last_heard || !*last_heard) return false;
     char t[160], last[160], r[160];
-    norm(original, t, sizeof(t));
-    norm(last_heard, last, sizeof(last));
-    norm(rest, r, sizeof(r));
+    local_context_normalize(original, t, sizeof(t));
+    local_context_normalize(last_heard, last, sizeof(last));
+    local_context_normalize(rest, r, sizeof(r));
     if (strlen(r) > 60) return false;  // a long sentence is a new question, not a follow-up
 
     static const char *const weather[] = {"clima", "tiempo", "temperatura", "llover", "llueve", "lluvia", "calor", "frio", NULL};

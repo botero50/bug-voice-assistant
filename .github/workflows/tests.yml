@@ -1,0 +1,24 @@
+name: Host tests
+
+# The tests that need no board and no PC services: C code compiled on the runner and small Python tests.
+on:
+  push:
+    branches: [main]
+    paths:
+      - firmware/main/**
+      - server/**
+      - scripts/run_host_tests.sh
+      - .github/workflows/tests.yml
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the host tests
+        run: bash scripts/run_host_tests.sh

@@ -1,0 +1,13 @@
+# Skills of your own for Bug. Copy this folder ("skills") to the microSD card, next to "music" and "books".
+# One skill per line:   phrase | another phrase => answer
+# - Capitals, accents and punctuation do not matter when you speak.
+# - Put several answers with || and Bug picks one at random.
+# - {hora} and {fecha} are filled in from the board's clock.
+# - Your skills are checked before the built-in ones, so yours win.
+# - The answer is said with the free online voice (needs internet); without internet it is only shown on the screen.
+# After changing a file, no restart is needed: Bug reads the card each time.
+
+prueba de la tarjeta | skill de prueba => La tarjeta funciona. Hoy es {fecha}.
+como esta mi perro => Está muy bien || Está durmiendo || Pidió comida otra vez
+a que hora es la reunion => La reunión de equipo es a las diez de la mañana
+dime un dato curioso de mi casa => Vives en un lugar con mucha historia

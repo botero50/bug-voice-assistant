@@ -5,6 +5,8 @@ purpose: never paste it into chat, commits or screenshots.
 
 Paths below assume the project is in `C:\Users\<you>\Desktop\voice assitance`.
 
+**Shortcut:** `scripts\Instalar.bat` does section 1 (server, local voice, free chat model) for you and, with `-All`, also the board build tools, the Claude Code hooks and the training environment. `Iniciar Bug.bat` starts the server and `scripts\flash.ps1` builds and flashes the board. The README has the short version; the manual steps below explain what the scripts do.
+
 ## 1. The server (your PC)
 
 1. Install Python 3.12 and, for fast speech recognition, the current NVIDIA driver (optional; without
@@ -33,7 +35,7 @@ Settings (optional environment variables): `BUG_PORT`, `BUG_VOICE`, `BUG_WHISPER
 
 The server speaks with Microsoft's online voice (Salomé), and falls back to a voice that runs on this
 PC (Piper) whenever the online one takes longer than 1.4 s. To set it up: `pip install piper-tts` is in
-`requirements.txt`, and the voice file must be in `serveroices\`: download `es_MX-claude-high.onnx`
+`requirements.txt`, and the voice file must be in `server\voices\`: download `es_MX-claude-high.onnx`
 and `es_MX-claude-high.onnx.json` (about 63 MB) from
 https://huggingface.co/rhasspy/piper-voices/tree/main/es/es_MX/claude/high into that folder. Without the
 files the server just uses the online voice. Settings: `BUG_TTS=piper` (always the local voice, fastest),
@@ -178,6 +180,44 @@ Optional. `docs/DEV_BRIDGE_PLAN.md` has the whole plan. To try the first part: `
 the permissions Claude Code asks for (a sheet with Aprobar / Rechazar, or say "aprueba" / "rechaza"; with no answer in about a minute
 Claude Code asks you in the terminal as usual), tell you "cómo va Claude", and send it an instruction ("dile a Claude que continúe",
 "dile a Claude que corra las pruebas"), which resumes the session that is waiting for you.
+
+## 8e. Your own skills on the card
+
+**Nothing to copy:** the first time a microSD card is in the board, the firmware creates `/skills/ejemplo.txt` and `/home/devices.txt` on it by itself (so flashing, from the installer page or `scripts\flash.ps1`, is enough). A marker file `/bugseed.txt` stops it from touching files you edit or delete; to get the examples back run `BUGCFG {"sd_restore":true}` over USB. Edit the files by putting the card in the PC. Each line of a `.txt` file in `/skills` is a skill:
+
+```
+phrase | another phrase => what Bug answers
+como esta mi perro => Está muy bien || Está durmiendo
+prueba de la tarjeta => Hoy es {fecha} y son las {hora}
+```
+
+Capitals, accents and punctuation do not matter; `||` gives several answers (one at random); `{hora}` and `{fecha}` come from the board's clock. No restart or flashing is needed: the board reads the card each time. Yours are checked before the built-in skills. The answer is said with the online voice (internet needed); without internet it is only shown. `microsd_files/skills/ejemplo.txt` has examples.
+
+## 8f. Smart home (MQTT)
+
+Bug turns devices on and off by voice through an MQTT broker; it only touches devices you list.
+
+1. **No devices yet?** Try the pretend home: `python server/tools/sim_home.py` (a lamp, a bedroom light and a fan, no login; stop it when you are done).
+2. **A real broker:** `scripts\Instalar.bat -SmartHome` installs Mosquitto with a login `bug` and a random password kept in `server/mqtt_pass.txt` (never committed), then give the address to the board without seeing the password: `python server/tools/pair_board.py COM5 --mqtt`. Connect your devices (Tasmota, Zigbee2MQTT, ESP) to the same broker.
+3. **List the devices** in `/sd/home/devices.txt` on the card (the board put an example there by itself; write the first name with its article, "la luz de la sala"): `name | another name => command topic | state topic`.
+4. Say "enciende la luz de la sala", "apaga el ventilador", "¿está encendida la luz del cuarto?". The board sends ON or OFF and reads the retained state topic. With no broker address saved, it uses the PC that runs the server (port 1883).
+5. Test from USB without speaking: `BUGCFG {"mqtt_test":"casa/sala/luz/set=ON"}` sends, `{"mqtt_test":"casa/sala/luz/state"}` reads.
+
+## 8g. Who is speaking (voice recognition by name)
+
+Say **"Hola Bug, registra mi voz como María"**. Bug beeps and asks for three long phrases (any content, 3 to 6 seconds each, normal voice and distance). It keeps only 12 numbers per person, never the audio; up to 4 people. After that, every command is compared with them: the log shows `Speaker: María (similarity 0.83)`.
+
+- "¿Quién soy?" / "¿me reconoces?": Bug says who it thinks you are, or that it is not sure.
+- "¿A quién conoces?": the names it knows. "Olvida mi voz", "olvida la voz de Pedro", "olvida todas las voces".
+- The saying of names uses the online voice (internet needed); without it the text is shown.
+- It is a coarse comparison: good for greeting people, **not for security**. Nothing private (mail, approvals) depends on it. If it confuses two people, register them again in a quiet room, with longer phrases, or raise the threshold (`VID_THRESHOLD` in `firmware/main/voice_id_model.h`, made by `server/wake/train_speaker.py`).
+- Measure it yourself: after registering, speak normally and read the similarity numbers in the log (`idf.py monitor`); have someone else speak and see how far below 0.70 they fall.
+
+## 8h. Reinstalling or formatting without losing the setup
+
+**The board:** everything it remembers (Wi-Fi, server, e-mail, agenda, tokens, smart home, registered voices) is also copied to its microSD card, in `bugcfg.js`, a few seconds after a change and then checked every minute. If the board's own memory is empty (you reinstalled the firmware with "Erase device", or the memory was damaged), it restores itself from the card at the next start, restarts once and connects to your Wi-Fi again. Nothing to do, as long as the same card stays in the board. The file holds passwords in plain text, so keep the card with the board; `BUGCFG {"backup":0}` turns the copy off and deletes it ("forget all" deletes it too). Without a card, use the installer page's "Set up the board" again.
+
+**The PC:** formatting loses what is not in Git (tokens, e-mail login, calendar links, your city). Before formatting run `scripts\Respaldo.bat` (it makes `Bug-respaldo-<date>.zip` on the desktop; `-WithData` adds your voice recordings), keep the zip somewhere private (it has secrets), and on the new PC after `git clone` and `scripts\Instalar.bat` run `scripts\Respaldo.bat -Restore <the zip>`.
 
 ## 9. Everything you can say
 

@@ -1,0 +1,13 @@
+# Your smart-home devices for Bug. Bug copies this file to the card by itself the first time the card is used.
+# One device per line:   name | another name => command topic | state topic
+# The FIRST name is how Bug says it ("Listo, encendí la luz de la sala"), so write it with its article (la / el).
+# Bug sends ON or OFF to the command topic ("enciende la luz de la sala", "apaga el ventilador")
+# and reads the retained state topic to answer "¿está encendida la luz de la sala?". The state topic is optional.
+# The MQTT broker is set with the installer page or: BUGCFG {"mqtt":"mqtt://user:password@host:1883"}
+# (without one, the PC that runs the Bug server is used, port 1883).
+# These three work with the pretend home:  python server/tools/sim_home.py
+# To get the original examples back: BUGCFG {"sd_restore":1}
+
+la luz de la sala | luz de la sala | lámpara de la sala => casa/sala/luz/set | casa/sala/luz/state
+la luz del cuarto | luz del cuarto | lámpara del cuarto => casa/cuarto/luz/set | casa/cuarto/luz/state
+el ventilador | ventilador => casa/cuarto/ventilador/set | casa/cuarto/ventilador/state

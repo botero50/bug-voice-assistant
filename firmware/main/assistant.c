@@ -7,6 +7,8 @@
 #include "voice_clips.h"
 #include "local_skills.h"
 #include "local_context.h"
+#include "voice_id.h"
+#include "config_backup.h"
 #include "nvs.h"
 #include "esp_timer.h"
 #include "audio_driver.h"
@@ -57,6 +59,10 @@ static volatile bool wake_listening = false;  // the on-board detector is fed wi
 static volatile bool local_wake = false;       // it heard "Hola Bug"
 static bool skip_chime = false;
 static uint32_t pc_down_until_ms = 0;  // after the PC fails, the board does not try it again for a minute
+static char enroll_name[VID_NAME_MAX] = "";   // set when the owner asks to register a voice: starts once the answer has been spoken
+static volatile bool enroll_requested = false;
+static char speaker_name[VID_NAME_MAX] = "";   // who spoke the last command (empty: nobody known / not sure)
+static float speaker_score = 0;
 static volatile bool train_requested = false;  // the owner asked to record their voice
 static float noise_floor = 80.0f;
 static char heard_text[128];
@@ -191,6 +197,13 @@ static void remember_exchange(const char *heard, const char *reply) {
     if (history_count < ASSISTANT_HISTORY_SIZE) history_count++;
     last_exchange_ms = (uint32_t)(esp_timer_get_time() / 1000) | 1;
     history_save();
+}
+
+bool assistant_current_speaker(char *name, size_t size, float *score) {
+    if (!speaker_name[0]) return false;
+    strlcpy(name, speaker_name, size);
+    if (score) *score = speaker_score;
+    return true;
 }
 
 static void set_texts(const char *heard, const char *reply) {
@@ -456,6 +469,9 @@ static void speak_with(const voice_result_t *result, const int *clips, int clip_
         } else if (strncmp(result->screen, "stopwatch?cmd=", 14) == 0) {
             stopwatch_command(result->screen + 14);
             publish_screen("stopwatch", NULL);
+        } else if (strncmp(result->screen, "voiceid?n=", 10) == 0) {
+            strlcpy(enroll_name, result->screen + 10, sizeof(enroll_name));
+            enroll_requested = true;  // starts once this answer has been spoken
         } else if (strncmp(result->screen, "train?", 6) == 0) {
             train_requested = true;  // starts once this answer has been spoken
         } else if (strncmp(result->screen, "ota?", 4) == 0) {
@@ -722,6 +738,63 @@ static void run_training(int16_t *utterance) {
     set_texts("", "");
 }
 
+// Who is speaking: compares this utterance with the people the board knows (only when somebody is registered)
+static void observe_speaker(const int16_t *audio, size_t samples) {
+    speaker_name[0] = ' ';
+    if (voice_id_count() == 0) return;
+    uint32_t started = pdTICKS_TO_MS(xTaskGetTickCount());
+    float embedding[VID_DIMS];
+    if (!voice_id_embed(audio, samples, embedding)) {
+        ESP_LOGI(TAG, "Speaker: too little speech to tell");
+        return;
+    }
+    float score = 0;
+    int who = voice_id_identify(embedding, &score);
+    speaker_score = score;
+    if (who >= 0) strlcpy(speaker_name, voice_id_name(who), sizeof(speaker_name));
+    ESP_LOGI(TAG, "Speaker: %s (similarity %.2f, %u ms)", who >= 0 ? speaker_name : "nobody known", score, (unsigned)(pdTICKS_TO_MS(xTaskGetTickCount()) - started));
+}
+
+// Registers a voice: three long phrases, each one turned into numbers; nothing is recorded or kept except those numbers
+static void run_enrollment(int16_t *utterance) {
+    float embeddings[3 * VID_DIMS];
+    int got = 0, misses = 0;
+    while (got < 3 && misses < 4) {
+        char prompt[48];
+        snprintf(prompt, sizeof(prompt), "Di una frase larga (%d de 3)", got + 1);
+        set_texts(prompt, enroll_name);
+        set_state(ASSISTANT_STATE_THINKING);
+        vTaskDelay(pdMS_TO_TICKS(80));
+        set_state(ASSISTANT_STATE_LISTENING);
+        audio_set_speaker(true);
+        vTaskDelay(pdMS_TO_TICKS(30));
+        audio_beep(1175.0f, 70);
+        audio_set_speaker(false);
+        audio_flush_input(150);
+        size_t samples = capture_utterance(utterance, 7000, ASSISTANT_STATE_LISTENING, false);
+        if (samples < SAMPLE_RATE * 3 / 2 || !voice_id_embed(utterance, samples, &embeddings[got * VID_DIMS])) {
+            misses++;  // silence or too short: a longer phrase tells the voice better
+            set_texts("Una frase más larga, por favor", enroll_name);
+            vTaskDelay(pdMS_TO_TICKS(1200));
+            continue;
+        }
+        got++;
+    }
+    voice_result_t made = {.action = VOICE_ACTION_REPLY};
+    if (got == 3 && voice_id_enroll(enroll_name, embeddings, 3)) {
+        snprintf(made.reply, sizeof(made.reply), "Listo %s, ya reconozco tu voz.", enroll_name);
+        ESP_LOGI(TAG, "Voice registered: %s", enroll_name);
+        strlcpy(pending_voice, made.reply, sizeof(pending_voice));
+        strlcpy(pending_voice_lang, "es", sizeof(pending_voice_lang));
+        static const int clips[] = {CLIP_LISTO};
+        speak_with(&made, clips, 1);
+    } else {
+        strlcpy(made.reply, "No pude oír tu voz bien. Intentamos otra vez cuando quieras.", sizeof(made.reply));
+        static const int clips[] = {CLIP_NO_ENTENDI};
+        speak_with(&made, clips, 1);
+    }
+}
+
 static void handle_command_with_voice(int16_t *utterance);
 
 static void handle_command(int16_t *utterance) {
@@ -749,6 +822,7 @@ static void handle_command_with_voice(int16_t *utterance) {
         return;
     }
 
+    observe_speaker(utterance, samples);
     // First the board's own recogniser (no PC, no internet); only if it is not sure does the PC listen
     float confidence = 0;
     const char *sentence = command_local_recognize(utterance, samples, &confidence);
@@ -799,6 +873,7 @@ static void assistant_task(void *arg) {
     muted = settings.mic_muted;
     clips_init();
     history_load();
+    voice_id_init();
 
     wait_for_wifi();
     if (network_manager_is_connected() == ESP_OK) {
@@ -809,6 +884,7 @@ static void assistant_task(void *arg) {
     calibrate_noise();
 
     for (;;) {
+        config_backup_poll();  // keeps the copy of the settings on the card up to date
         set_state(muted ? ASSISTANT_STATE_MUTED : (music_is_playing() ? ASSISTANT_STATE_MUSIC : ASSISTANT_STATE_STANDBY));
         if (announce_pending) say_announcement();
         if (test_words_pending) {
@@ -817,6 +893,7 @@ static void assistant_task(void *arg) {
             test_words_pending = false;
             ESP_LOGI(TAG, "Test phrase: \"%s\"", words);
             handle_heard(words);
+            ESP_LOGI(TAG, "Test phrase done");
         }
         // When the PC does not answer, look for it by name every 30 seconds: its address may have changed
         static uint32_t last_find_ms = 0;
@@ -839,6 +916,11 @@ static void assistant_task(void *arg) {
         if (train_requested) {
             train_requested = false;
             run_training(utterance);
+            continue;
+        }
+        if (enroll_requested) {
+            enroll_requested = false;
+            run_enrollment(utterance);
             continue;
         }
         local_wake = false;
@@ -878,12 +960,19 @@ static void assistant_task(void *arg) {
         {
             float wake_confidence = 0;
             const char *heard_id = command_local_classify(utterance, samples, &wake_confidence);
-            bool recognised = heard_id && strcmp(heard_id, "wake") == 0 && wake_confidence >= 0.65f;
+            // With the PC up, a doubtful sound is settled by its speech recognition, so the board stays strict (few false alarms).
+            // With the PC away nobody settles it: the board then accepts more (a false alarm only opens the microphone for a moment).
+            const bool arbiter = pc_available();
+            const float classifier_needed = arbiter ? 0.65f : 0.50f;
+            bool recognised = heard_id && strcmp(heard_id, "wake") == 0 && wake_confidence >= classifier_needed;
+            float greeting_seen = -1;
             if (!recognised && samples >= 6400) {
                 // A second opinion from the board's own greeting check, before the PC is asked (0 in memory turns it off)
                 float needed = wake_verify_threshold();
+                if (needed > 0 && !arbiter && needed > 0.55f) needed = 0.55f;
                 if (needed > 0) {
                     float greeting = wake_verify_score(utterance, samples);
+                    greeting_seen = greeting;
                     if (greeting >= needed) {
                         recognised = true;
                         wake_confidence = greeting;
@@ -891,6 +980,9 @@ static void assistant_task(void *arg) {
                     }
                 }
             }
+            // One line per sound, so what the board decides can be measured in daily use
+            ESP_LOGI(TAG, "Wake check: %.1f s, classifier \"%s\" %.2f, greeting check %s%.2f -> %s", (float)samples / SAMPLE_RATE, heard_id ? heard_id : "-", wake_confidence,
+                     greeting_seen < 0 ? "n/a " : "", greeting_seen < 0 ? 0.0f : greeting_seen, recognised ? "WAKE" : (pc_available() ? "asking the PC" : "ignored (PC away)"));
             if (recognised) {
                 ESP_LOGI(TAG, "Wake word recognised on the board (%.2f)", wake_confidence);
                 if (!muted) {
@@ -904,6 +996,7 @@ static void assistant_task(void *arg) {
                         }
                     }
                     if (sentence) {
+                        observe_speaker(utterance, samples);
                         ESP_LOGI(TAG, "...and the command in the same sentence: \"%s\"", sentence);
                         handle_heard(sentence);
                     } else {
@@ -937,6 +1030,7 @@ static void assistant_task(void *arg) {
             char words[128];
             strlcpy(words, result.heard, sizeof(words));
             voice_result_free(&result);
+            observe_speaker(utterance, samples);
             handle_heard(words);
         } else if (result.action == VOICE_ACTION_REPLY) {
             ESP_LOGI(TAG, "Heard \"%s\", answering \"%s\"", result.heard, result.reply);

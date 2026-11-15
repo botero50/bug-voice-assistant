@@ -59,6 +59,8 @@ server/wake/*.exe
 
 # Dev bridge: the pairing token and the log of every request
 server/dev_token.txt
+server/mqtt_pass.txt
+server/mqtt_url.txt
 server/dev_audit.log
 server/dev_actions.json
 

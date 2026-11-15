@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - firmware/**
+      - microsd_files/**   # the example files the firmware embeds
       - web/**
       - .github/workflows/installer.yml
   workflow_dispatch:
