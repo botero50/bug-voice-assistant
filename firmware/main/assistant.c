@@ -740,7 +740,7 @@ static void run_training(int16_t *utterance) {
 
 // Who is speaking: compares this utterance with the people the board knows (only when somebody is registered)
 static void observe_speaker(const int16_t *audio, size_t samples) {
-    speaker_name[0] = ' ';
+    speaker_name[0] = '\0';
     if (voice_id_count() == 0) return;
     uint32_t started = pdTICKS_TO_MS(xTaskGetTickCount());
     float embedding[VID_DIMS];

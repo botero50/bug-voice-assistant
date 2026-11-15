@@ -65,7 +65,8 @@ static void pick_words(const words_t *original, const words_t *plain, int from, 
 static const struct {
     const char *spoken, *code, *name;
 } LANGUAGES[] = {{"ingles", "en", "inglés"}, {"frances", "fr", "francés"}, {"portugues", "pt", "portugués"}, {"italiano", "it", "italiano"},
-                 {"aleman", "de", "alemán"}, {"japones", "ja", "japonés"}, {"chino", "zh-CN", "chino"}, {"coreano", "ko", "coreano"}};
+                 {"aleman", "de", "alemán"}, {"japones", "ja", "japonés"}, {"chino", "zh-CN", "chino"}, {"coreano", "ko", "coreano"},
+                 {"espanol", "es", "español"}};
 
 static bool try_translation(const char *original, const char *text, local_answer_t *a) {
     static const char *const TRIGGERS[] = {" como se dice ", " como se escribe ", " traduce ", " traducir ", " traduceme ", " traducime ", " que significa ", NULL};
@@ -128,7 +129,7 @@ static bool try_translation(const char *original, const char *text, local_answer
     if (!phrase[0]) return false;
 
     static char translated[260];
-    if (!ls_translate("es", LANGUAGES[lang].code, phrase, translated, sizeof(translated))) {
+    if (!ls_translate(strcmp(LANGUAGES[lang].code, "es") == 0 ? "Autodetect" : "es", LANGUAGES[lang].code, phrase, translated, sizeof(translated))) {
         ls_say(a, CLIP_SIN_CONEXION);
         ls_finish(a, "No tengo conexión en este momento.", NULL);
         return true;
@@ -366,7 +367,9 @@ static bool try_books(const char *text, local_answer_t *a) {
 // ------------------------------------------------------------------------------- morning briefing
 static bool try_briefing(const char *text, local_answer_t *a) {
     if (!(strstr(text, " buenos dias ") || strstr(text, " buen dia ") || strstr(text, " resumen del dia ") || strstr(text, " que hay para hoy ") ||
-          strstr(text, " como amanece el dia ") || strstr(text, " dame el resumen "))) {
+          strstr(text, " como amanece el dia ") || strstr(text, " dame el resumen ") || strstr(text, " buenas tardes ") ||
+          strstr(text, " buenas noches ") || strstr(text, " buenas ") || strstr(text, " buen dia ") || strstr(text, " que hay hoy ") ||
+          strstr(text, " que tengo para hoy ") || strstr(text, " resumen del dia ") || strstr(text, " resumen de hoy "))) {
         return false;
     }
     time_t now = time(NULL);
@@ -493,7 +496,8 @@ static bool try_games(const char *text, local_answer_t *a) {
 bool local_help_try(const char *text, local_answer_t *a) {
     bool asks = strstr(text, "que puedes hacer") || strstr(text, "que sabes hacer") || strstr(text, "que haces") ||
                 strstr(text, "para que sirves") || strstr(text, "que funciones tienes") ||
-                strstr(text, "como me puedes ayudar") || strstr(text, "en que me puedes ayudar") || strstr(text, "que comandos") ||
+                strstr(text, "como me puedes ayudar") || strstr(text, " ayudame ") || strstr(text, "tus funciones") || strstr(text, "tus habilidades") ||
+                strstr(text, "que habilidades") || strstr(text, "que mas haces") || strstr(text, "que mas sabes") || strstr(text, "en que me puedes ayudar") || strstr(text, "que comandos") ||
                 (has(text, "ayuda") && (has(text, "necesito") || has(text, "dame") || strlen(text) < 14));
     if (!asks) return false;
     const char *spoken;

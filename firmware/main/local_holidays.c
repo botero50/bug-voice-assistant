@@ -82,8 +82,23 @@ static const char *const DAYS[] = {"lunes", "martes", "miércoles", "jueves", "v
 static const char *const MONTHS[] = {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
                                      "septiembre", "octubre", "noviembre", "diciembre"};
 
+// "Cuántos días faltan para Navidad": the next time that holiday comes
+static const struct {
+    const char *words;
+    int id;
+} COUNTDOWN[] = {{" navidad ", 17}, {" ano nuevo ", 0}, {" reyes ", 1}, {" semana santa ", 3}, {" jueves santo ", 3}, {" viernes santo ", 4},
+                 {" independencia ", 10}, {" todos los santos ", 14}, {" dia del trabajo ", 5}, {" primero de mayo ", 5}, {NULL, 0}};
+
 bool local_holidays_try(const char *text, local_answer_t *a) {
-    if (!strstr(text, " festivo ") && !strstr(text, " festivos ") && !strstr(text, " feriado ")) {
+    int only_id = -1;
+    if (strstr(text, " faltan ") || strstr(text, " falta ") || strstr(text, " cuantos dias ") || strstr(text, " cuanto falta ") ||
+        strstr(text, " cuando es ") || strstr(text, " cuando llega ")) {
+        for (int i = 0; COUNTDOWN[i].words; i++) {
+            if (strstr(text, COUNTDOWN[i].words)) only_id = COUNTDOWN[i].id;
+        }
+    }
+    if (only_id < 0 && !strstr(text, " festivo ") && !strstr(text, " festivos ") && !strstr(text, " feriado ") && !strstr(text, " feriados ") &&
+        !strstr(text, " puente ") && !strstr(text, " puentes ")) {
         return false;
     }
     time_t now = time(NULL);
@@ -99,6 +114,7 @@ bool local_holidays_try(const char *text, local_answer_t *a) {
         holiday_t list[18];
         int n = holidays_of(year, list);
         for (int i = 0; i < n; i++) {
+            if (only_id >= 0 && list[i].id != only_id) continue;
             if (list[i].day >= today && (next.id < 0 || list[i].day < next.day)) next = list[i];
         }
     }
@@ -107,9 +123,19 @@ bool local_holidays_try(const char *text, local_answer_t *a) {
     int weekday = (int)((next.day + 3) % 7 + 7) % 7;
     int left = (int)(next.day - today);
 
+    char reply[200];
+    if (only_id >= 0 && left > 1) {
+        // "Dentro de 41 días, Navidad": the recorded words, no internet needed
+        ls_say(a, CLIP_DENTRO_DE);
+        ls_say_number(a, left);
+        ls_say(a, CLIP_DIAS);
+        ls_say(a, CLIP_HOLIDAY0 + next.id);
+        snprintf(reply, sizeof(reply), "Faltan %d días para %s.", left, NAMES[next.id]);
+        ls_finish(a, reply, NULL);
+        return true;
+    }
     ls_say(a, CLIP_PROXIMO_FESTIVO);
     ls_say(a, CLIP_HOLIDAY0 + next.id);
-    char reply[200];
     int used = snprintf(reply, sizeof(reply), "El próximo festivo es %s", NAMES[next.id]);
     if (left == 0) {
         ls_say(a, CLIP_HOY);

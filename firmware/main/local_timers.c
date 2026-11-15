@@ -332,7 +332,33 @@ static char *build_list_json(void) {
 }
 
 // ------------------------------------------------------------------------------------- the skill
-static bool only_known_words(const tokens_t *t, const bool *mask) {
+static bool token_is_known(const char *token);
+static bool only_known_words(const tokens_t *t, const bool *mask);
+
+// What the person wants to be reminded of: from the first word the timer code does not know to the last one, without the time itself
+// ("recuérdame en 30 minutos llamar a Ana" -> "Llamar a ana"). The words are the normalized ones (no accents).
+static bool extract_label(const tokens_t *t, const bool *mask, char *out, size_t size) {
+    int first = -1, last = -1;
+    for (int i = 0; i < t->n; i++) {
+        if (mask[i] || token_is_known(t->tok[i])) continue;
+        if (first < 0) first = i;
+        last = i;
+    }
+    if (first < 0) return false;
+    out[0] = '\0';
+    int words = 0;
+    for (int i = first; i <= last; i++) {
+        if (mask[i]) continue;
+        if (out[0]) strlcat(out, " ", size);
+        strlcat(out, t->tok[i], size);
+        words++;
+    }
+    if (words > 7 || !out[0]) return false;  // a long sentence is not a label: let the PC understand it
+    out[0] = (char)toupper((unsigned char)out[0]);
+    return true;
+}
+
+static bool token_is_known(const char *token) {
     static const char *const known[] = {
         "pon", "ponme", "poner", "programa", "programame", "configura", "crea", "un", "una", "el", "la", "de", "del", "en",
         "a", "las", "los", "para", "que", "me", "te", "dentro", "temporizador", "temporizadores", "alarma", "alarmas",
@@ -344,11 +370,16 @@ static bool only_known_words(const tokens_t *t, const bool *mask) {
         "cuanto", "falta", "cuales", "cuantos", "cuantas", "hay", "tengo", "tienes", "dime", "muestrame", "lista",
         "cancela", "cancelar", "quita", "quitar", "elimina", "eliminar", "borra", "borrar", "apaga", "apagar",
         "programado", "programada", "programados", "programadas", "todo", "y", NULL};
+    if (isdigit((unsigned char)token[0]) || word_value(token) >= 0) return true;
+    for (int k = 0; known[k]; k++) {
+        if (!strcmp(token, known[k])) return true;
+    }
+    return false;
+}
+
+static bool only_known_words(const tokens_t *t, const bool *mask) {
     for (int i = 0; i < t->n; i++) {
-        if (mask[i]) continue;
-        bool ok = isdigit((unsigned char)t->tok[i][0]) || word_value(t->tok[i]) >= 0;
-        for (int k = 0; !ok && known[k]; k++) ok = !strcmp(t->tok[i], known[k]);
-        if (!ok) return false;
+        if (!mask[i] && !token_is_known(t->tok[i])) return false;
     }
     return true;
 }
@@ -359,7 +390,8 @@ bool local_timers_try(const char *text, local_answer_t *a) {
     bool trigger = contains(&t, "temporizador") || contains(&t, "temporizadores") || contains(&t, "alarma") ||
                    contains(&t, "alarmas") || contains(&t, "despiertame") || contains(&t, "despertador") ||
                    contains(&t, "recuerdame") || contains(&t, "avisame") || contains(&t, "recordatorio") ||
-                   contains(&t, "recordatorios") || (contains(&t, "cuenta") && contains(&t, "regresiva")) ||
+                   contains(&t, "recordatorios") || (contains(&t, "cuenta") && (contains(&t, "regresiva") || contains(&t, "minutos") || contains(&t, "minuto") || contains(&t, "segundos") ||
+                                                contains(&t, "segundo") || contains(&t, "horas"))) ||
                    (contains(&t, "cuanto") && contains(&t, "falta") && !contains(&t, "para"));
     if (!trigger) {
         return false;
@@ -399,6 +431,9 @@ bool local_timers_try(const char *text, local_answer_t *a) {
     int weekday = -1;
     uint32_t repeat = parse_repeat(&t, mask, &weekday);
 
+    // "recuérdame que compre pan": a reminder with no time yet is not a question about the list; the PC works out what it means
+    if ((contains(&t, "recuerdame") || contains(&t, "avisame")) && !duration && !clock.found && !only_known_words(&t, mask)) return false;
+
     // ---- list: "qué alarmas tengo", "cuánto falta"
     bool asks = contains(&t, "que") || contains(&t, "cuales") || contains(&t, "cuantos") || contains(&t, "cuantas") ||
                 contains(&t, "mis") || contains(&t, "hay") || contains(&t, "falta");
@@ -425,8 +460,10 @@ bool local_timers_try(const char *text, local_answer_t *a) {
     }
 
     // Something to remember (a label) is for the PC, which can say it aloud
+    char label[48] = "";
     if (!only_known_words(&t, mask)) {
-        return false;
+        // A time plus something to remember ("recuérdame en 30 minutos llamar a Ana"): the board keeps the label itself
+        if (!(duration > 0 || clock.found) || !extract_label(&t, mask, label, sizeof(label))) return false;
     }
 
     bool reminder = contains(&t, "recuerdame") || contains(&t, "avisame") || contains(&t, "recordatorio");
@@ -436,7 +473,7 @@ bool local_timers_try(const char *text, local_answer_t *a) {
     if (duration > 0 && !clock.found) {
         if (now < 1700000000) return false;
         uint8_t kind = reminder ? ALARM_KIND_REMINDER : ALARM_KIND_TIMER;
-        alarms_add(alarms_new_id(), now + duration, reminder ? "Recordatorio" : "Temporizador", 0, kind);
+        alarms_add(alarms_new_id(), now + duration, label[0] ? label : reminder ? "Recordatorio" : "Temporizador", 0, kind);
         char reply[96] = "";
         ls_say(a, reminder ? CLIP_LISTO_RECORDARE : CLIP_LISTO_TEMPORIZADOR_DE);
         if (reminder) {
@@ -448,6 +485,7 @@ bool local_timers_try(const char *text, local_answer_t *a) {
         say_duration(a, reply, sizeof(reply), duration);
         strlcat(reply, ".", sizeof(reply));
         ls_finish(a, reply, NULL);
+        if (label[0]) ls_speak(a, label);  // the online voice says what it is for, after the recorded part
         return true;
     }
 
@@ -492,7 +530,7 @@ bool local_timers_try(const char *text, local_answer_t *a) {
             if (best <= now + 30) best += 7 * 86400;
         }
         uint8_t kind = reminder ? ALARM_KIND_REMINDER : ALARM_KIND_ALARM;
-        alarms_add(alarms_new_id(), best, reminder ? "Recordatorio" : "Alarma", repeat, kind);
+        alarms_add(alarms_new_id(), best, label[0] ? label : reminder ? "Recordatorio" : "Alarma", repeat, kind);
 
         struct tm when;
         localtime_r(&best, &when);
@@ -514,6 +552,7 @@ bool local_timers_try(const char *text, local_answer_t *a) {
         say_clock(a, reply, sizeof(reply), when.tm_hour, when.tm_min);
         strlcat(reply, ".", sizeof(reply));
         ls_finish(a, reply, NULL);
+        if (label[0]) ls_speak(a, label);
         return true;
     }
 

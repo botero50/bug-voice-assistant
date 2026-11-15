@@ -289,12 +289,26 @@ bool local_lists_try(const char *original, local_answer_t *a) {
             break;
         }
     }
-    bool note_request = que >= 0 || (has_word(&w, "toma") && has_word(&w, "nota")) || (has_word(&w, "nueva") && notes_word);
+    // "anota comprar el regalo", "apunta una nota llamar al médico", "guarda una nota que diga pagar la luz": the note is what follows the verb
+    static const char *const note_verbs_with_word[] = {"guarda", "escribe", "crea", "haz", "agrega", "anade", "pon", NULL};
+    static const char *const note_skip[] = {"una", "nota", "que", "diga", "dice", "lo", "siguiente", "este", "esto", "mi", "nueva", "de", NULL};
+    int note_verb = -1;
+    for (int i = 0; i < w.n && !list_word; i++) {
+        if (is_one_of(w.plain[i], note_verbs) || (notes_word && is_one_of(w.plain[i], note_verbs_with_word))) { note_verb = i; break; }
+    }
+    int note_start = -1;
+    if (note_verb >= 0) {
+        note_start = note_verb + 1;
+        while (note_start < w.n && is_one_of(w.plain[note_start], note_skip)) note_start++;
+    }
+    bool verb_note = note_verb >= 0 && note_start < w.n;
+    bool note_request = que >= 0 || verb_note || (has_word(&w, "toma") && has_word(&w, "nota")) || (has_word(&w, "nueva") && notes_word);
     if (note_request && !list_word) {
         int start = que >= 0 ? que + 1 : (has_word(&w, "nota") ? 0 : 0);
         if (que < 0) {  // "toma nota ..." / "nueva nota ...": what follows the word "nota"
             for (int i = 0; i < w.n; i++) if (!strcmp(w.plain[i], "nota")) start = i + 1;
         }
+        if (verb_note) start = note_start;
         char note[ITEM_BYTES] = "";
         for (int i = start; i < w.n; i++) {
             if (note[0]) strlcat(note, " ", sizeof(note));

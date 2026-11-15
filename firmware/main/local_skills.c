@@ -205,15 +205,52 @@ static int volume_number(const char *text) {
 }
 
 // ------------------------------------------------------------------------------------ the skills
+// Politeness and filler around a request do not change what it asks: "oye Bug, ¿podrías decirme la hora, por favor?" is "la hora".
+// Leading and trailing fillers are cut (only at the edges, so "qué puedes hacer" keeps its "puedes"), "por favor" anywhere.
+static bool cut_prefix(char *text, const char *filler) {
+    char padded[40];
+    snprintf(padded, sizeof(padded), " %s ", filler);
+    size_t n = strlen(padded);
+    if (strncmp(text, padded, n) != 0) return false;
+    memmove(text + 1, text + n, strlen(text + n) + 1);  // keep one leading space
+    return true;
+}
+
+static bool cut_suffix(char *text, const char *filler) {
+    char padded[40];
+    snprintf(padded, sizeof(padded), " %s ", filler);
+    size_t n = strlen(padded), len = strlen(text);
+    if (len < n || strcmp(text + len - n, padded) != 0) return false;
+    text[len - n + 1] = '\0';  // keep one trailing space
+    return true;
+}
+
+static void strip_fillers(char *text) {
+    static const char *const leading[] = {"oye", "oiga", "hola", "bug", "disculpa", "perdona", "una pregunta", "por favor", "porfa", "podrias", "podria",
+                                          "puedes", "me puedes", "me podrias", "me podria", "quiero saber", "quisiera saber", "necesito saber",
+                                          "me gustaria saber", "sera que", "ey", "hey", "bueno", "entonces", "mira", "decirme", "decime", "contarme", "decir", NULL};
+    static const char *const trailing[] = {"por favor", "porfa", "gracias", "ahora", "ahorita", "ya", "bug", "hola", "mil gracias", "por fa", NULL};
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (int i = 0; leading[i]; i++) changed |= cut_prefix(text, leading[i]);
+        for (int i = 0; trailing[i]; i++) changed |= cut_suffix(text, trailing[i]);
+        for (char *at; (at = strstr(text, " por favor ")) != NULL;) {  // "pon la radio por favor ahora"
+            memmove(at + 1, at + 11, strlen(at + 11) + 1);
+            changed = true;
+        }
+    }
+}
+
 bool local_skills_try(const char *original, local_answer_t *a) {
     char text[200];
     normalize(original, text, sizeof(text));
+    strip_fillers(text);
     memset(a, 0, sizeof(*a));
 
     static const char *const music_words[] = {"musica", "radio", "emisora", "cancion", NULL};
     static const char *const stop_words[] = {"para", "parar", "deten", "detener", "apaga", "apagar", "quita", "quitar", "pausa", "pausar", "cierra", NULL};
     static const char *const timer_words[] = {"temporizador", "alarma", "despiertame", "recuerdame", "avisame", "minutos", "minuto", "horas", "segundos", NULL};
-    static const char *const home_words[] = {"inicio", "volver", "vuelve", "atras", "salir", NULL};
+    static const char *const home_words[] = {"inicio", "volver", "vuelve", "atras", "salir", "principal", "menu", "home", "regresa", "regresar", NULL};
 
     if (local_help_try(text, a)) {
         return true;
@@ -321,13 +358,22 @@ bool local_skills_try(const char *original, local_answer_t *a) {
         ls_finish(a, "Listo, apagué la música.", "music_stop");
         return true;
     }
-    if (!about_timers && has(text, "hora") && (has(text, "que hora") || has(text, "la hora") || has(text, "hora es") ||
-                                              has(text, "hora son") || has(text, "hora tienes"))) {
+    // Asking the time or the date in the many ways people do. "horas" and "minutos" alone do not make it a timer here:
+    // only the words that really set one (temporizador, alarma, avisame...) keep a sentence away from the clock.
+    static const char *const timer_strict[] = {"temporizador", "alarma", "despiertame", "recuerdame", "avisame", "cuenta", NULL};
+    bool sets_timer = any(text, timer_strict);
+    if (!sets_timer && (has(text, "que hora") || has(text, "que horas") || has(text, "la hora") || has(text, "hora es") || has(text, "hora son") ||
+                        has(text, "horas son") || has(text, "hora tienes") || has(text, "tienes hora") || has(text, "hora actual") ||
+                        has(text, "hora exacta") || has(text, "hora sera") || has(text, "hora local") || has(text, "dime la hora") ||
+                        has(text, "dame la hora") || (has(text, "hora") && strlen(text) < 14))) {
         answer_time(a);
         return true;
     }
-    if ((has(text, "que dia es") || has(text, "la fecha") || has(text, "que fecha") || has(text, "que dia es hoy")) &&
-        !about_timers) {
+    if (!sets_timer && (has(text, "que dia es") || has(text, "la fecha") || has(text, "que fecha") || has(text, "que dia es hoy") ||
+                        has(text, "que dia estamos") || has(text, "a que dia estamos") || has(text, "a cuanto estamos") ||
+                        has(text, "en que fecha") || has(text, "fecha de hoy") || has(text, "dia de hoy") || has(text, "hoy es que dia") ||
+                        has(text, "que dia de la semana") || has(text, "fecha actual") || has(text, "que dia cae hoy") ||
+                        (has(text, "fecha") && strlen(text) < 14))) {
         answer_date(a);
         return true;
     }

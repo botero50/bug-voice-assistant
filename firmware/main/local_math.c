@@ -165,11 +165,36 @@ static bool try_arithmetic(const tokens_t *t, local_answer_t *a) {
     for (int i = 0; i < t->n; i++) {
         const char *w = t->tok[i];
         if (strncmp(w, "cuanto", 6) == 0 || strncmp(w, "calcul", 6) == 0 || strncmp(w, "resuelv", 7) == 0 ||
-            strcmp(w, "suma") == 0 || strcmp(w, "resta") == 0 || strcmp(w, "multiplica") == 0 || strcmp(w, "divide") == 0) {
+            strcmp(w, "suma") == 0 || strcmp(w, "resta") == 0 || strcmp(w, "multiplica") == 0 || strcmp(w, "divide") == 0 ||
+            strncmp(w, "result", 6) == 0 || strcmp(w, "cual") == 0 || strcmp(w, "dime") == 0 || strcmp(w, "dame") == 0 || strcmp(w, "sabes") == 0) {
             asked = true;
         }
     }
     if (!asked) return false;
+
+    // "la mitad de 90", "el doble de 14", "el triple de 5", "el 20 por ciento de 300"
+    for (int i = 0; i < t->n; i++) {
+        double factor = 0;
+        if (is(t, i, "mitad")) factor = 0.5;
+        else if (is(t, i, "doble")) factor = 2;
+        else if (is(t, i, "triple")) factor = 3;
+        if (factor > 0 && is(t, i + 1, "de")) {
+            int used;
+            long long n;
+            if (number_at(t, i + 2, &used, &n)) {
+                char shown[40];
+                ls_say(a, CLIP_EL_RESULTADO_ES);
+                if (!say_value(a, (double)n * factor, shown, sizeof(shown))) {
+                    memset(a, 0, sizeof(*a));
+                    return false;
+                }
+                char reply[96];
+                snprintf(reply, sizeof(reply), "El resultado es %s.", shown);
+                ls_finish(a, reply, NULL);
+                return true;
+            }
+        }
+    }
 
     for (int i = 0; i < t->n; i++) {
         int used1;
@@ -184,6 +209,21 @@ static bool try_arithmetic(const tokens_t *t, local_answer_t *a) {
         else if (strcmp(op, "por") == 0 || strcmp(op, "x") == 0 || strcmp(op, "multiplicado") == 0 || strcmp(op, "veces") == 0) kind = '*';
         else if (strcmp(op, "dividido") == 0 || strcmp(op, "entre") == 0 || strcmp(op, "sobre") == 0) kind = '/';
         if (!kind) return false;
+        if (kind == '*' && is(t, k + 1, "ciento") && is(t, k + 2, "de")) {  // "20 por ciento de 300"
+            int used_p;
+            long long base;
+            if (!number_at(t, k + 3, &used_p, &base)) return false;
+            char shown_p[40];
+            ls_say(a, CLIP_EL_RESULTADO_ES);
+            if (!say_value(a, (double)first * (double)base / 100.0, shown_p, sizeof(shown_p))) {
+                memset(a, 0, sizeof(*a));
+                return false;
+            }
+            char reply_p[96];
+            snprintf(reply_p, sizeof(reply_p), "El resultado es %s.", shown_p);
+            ls_finish(a, reply_p, NULL);
+            return true;
+        }
         k++;
         if (k < t->n && (is(t, k, "por") || is(t, k, "entre") || is(t, k, "a"))) k++;
         int used2;

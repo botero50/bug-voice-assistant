@@ -31,6 +31,9 @@ build_and_run follow_ups   context_test.c $FWR/local_context.c -I$FWR
 build_and_run card_skills  -DSDSKILLS_HOST sdskills_test.c $FWR/local_sdskills.c $FWR/local_context.c -I$FWR
 build_and_run smart_home   -DHOME_HOST home_test.c $FWR/local_home.c $FWR/local_context.c -I$FWR
 build_and_run mqtt_packets -DMQTT_HOST mqtt_test.c $FWR/mqtt_lite.c -I$FWR
+awk '/^static bool cut_prefix/{p=1} p{print} p&&/^static void strip_fillers/{s=1} s&&/^}/{exit}' $FWR/local_skills.c > fillers_body.inc
+build_and_run fillers      fillers_test.c
+rm -f fillers_body.inc
 build_and_run voice_id     -DVOICE_ID_HOST voiceid_test.c $FWR/voice_id.c -I$FWR
 cd ../..
 PY=python3; python3 --version >/dev/null 2>&1 || PY=python  # (on Windows "python3" can be a Store shortcut that does nothing)

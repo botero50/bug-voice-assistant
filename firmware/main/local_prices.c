@@ -85,7 +85,8 @@ bool local_prices_try(const char *text, local_answer_t *a) {
     if (!what) return false;
     // Only a question about the price, not any sentence that mentions the word
     if (!(has(text, "precio") || has(text, "cuanto") || has(text, "esta") || has(text, "vale") || has(text, "cotizacion") ||
-          has(text, "cuesta") || has(text, "como") || has(text, "cual"))) {
+          has(text, "cuesta") || has(text, "como") || has(text, "cual") || has(text, "hoy") || has(text, "cotiza") || has(text, "cotiza") ||
+          has(text, "hay") || has(text, "dime") || has(text, "ahora") || strlen(text) < 16)) {
         return false;
     }
     // "cuánto es 5 dólares en pesos" is a conversion for the PC

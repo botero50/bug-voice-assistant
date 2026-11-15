@@ -215,7 +215,10 @@ static int split_words(const char *text, const char **start, int *length, int ma
 static bool try_wikipedia(const char *original, const char *text, local_answer_t *a) {
     static const char *const TRIGGERS[] = {" quien fue ", " quien es ", " quien era ", " quienes eran ", " quienes son ", " que es ", " que fue ",
                                            " que son ", " que significa ", " cuentame de ", " cuentame sobre ", " cuentame acerca de ",
-                                           " hablame de ", " hablame sobre ", " hablame acerca de ", " dime algo de ", " dime algo sobre ",
+                                           " hablame de ", " hablame sobre ", " hablame acerca de ", " dime algo de ", " dime algo sobre ", " que sabes de ", " que sabes sobre ",
+                                           " que sabes acerca de ", " que me puedes decir de ", " que me puedes decir sobre ", " informacion sobre ", " informacion de ",
+                                           " cuentame algo de ", " cuentame algo sobre ", " explicame que es ", " explicame ", " dime que es ", " define ",
+                                           " definicion de ", " investiga ", " averigua sobre ",
                                            " dime de ", " dime sobre ", " busca ", " wikipedia ", NULL};
     const char *subject = NULL;
     int skipped_words = 0;

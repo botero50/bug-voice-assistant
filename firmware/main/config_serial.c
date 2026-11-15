@@ -1,4 +1,5 @@
 #include "assistant.h"
+#include "audio_driver.h"
 #include "cJSON.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
@@ -98,6 +99,13 @@ static void apply(char *json_text) {
     if (restore && cJSON_IsTrue(restore)) {
         sd_seed_defaults(true);
         strlcat(done, " sd-restored", sizeof(done));
+    }
+    cJSON *volume = cJSON_GetObjectItem(root, "volume");  // for tests: the speaker volume right now, not saved; -1 goes back to the saved one
+    if (cJSON_IsNumber(volume)) {
+        bug_settings_t saved;
+        settings_copy(&saved);
+        audio_set_volume(volume->valueint < 0 ? saved.volume : (uint8_t)volume->valueint);
+        strlcat(done, " volume", sizeof(done));
     }
     const char *mqtt_test = text_of(root, "mqtt_test");
     if (mqtt_test) {

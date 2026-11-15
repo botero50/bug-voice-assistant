@@ -209,13 +209,18 @@ bool local_weather_brief(char *out, size_t size) {
 
 bool local_weather_try(const char *text, local_answer_t *a) {
     if (!(has(text, "clima") || has(text, "tiempo") || has(text, "llover") || has(text, "llueve") || has(text, "temperatura") ||
-          has(text, "pronostico"))) {
+          has(text, "pronostico") || has(text, "grados") || has(text, "frio") || has(text, "calor") || has(text, "paraguas") ||
+          has(text, "lluvia") || has(text, "lloviendo") || has(text, "nublado") || has(text, "soleado") || has(text, "sombrilla") ||
+          has(text, "abrigo") || has(text, "chaqueta") || has(text, "humedad"))) {
         return false;
     }
     // A named city ("el clima en Cali") or another day is for the PC: it knows how to look those up
     static const char *const allowed[] = {"como", "esta", "el", "la", "clima", "tiempo", "hoy", "que", "hace", "va", "a", "llover", "llueve",
                                           "temperatura", "pronostico", "tal", "dime", "me", "cual", "es", "afuera", "ahora", "por", "favor",
-                                          "hola", "bug", "un", "poco", "cuanta", "cuantos", "grados", "hay", "tengo", NULL};
+                                          "hola", "bug", "un", "poco", "cuanta", "cuantos", "grados", "hay", "tengo", "frio", "calor", "mucho", "mucha", "paraguas",
+                                          "sombrilla", "lluvia", "lloviendo", "nublado", "soleado", "necesito", "llevar", "llevo", "debo", "abrigo",
+                                          "chaqueta", "humedad", "ya", "ahorita", "y", "esta", "estan", "afuera", "puedo", "salir", "sin", "con",
+                                          "se", "siente", "sensacion", "termica", "dia", "cuanto", "cuanta", "marca", "actual", "actualmente", NULL};
     char copy[200];
     strlcpy(copy, text, sizeof(copy));
     char *save = NULL;

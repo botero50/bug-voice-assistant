@@ -1,0 +1,191 @@
+# Natural ways to ask for each skill. Format:  skill | phrase      (every line must be answered by the board itself)
+# Run:  scripts\phrases_check.ps1 -Port COM5      (prints the phrases the board did not answer itself)
+
+# --- time and date
+hora | qué hora es
+hora | dime la hora
+hora | me dices la hora
+hora | qué horas son
+hora | tienes hora
+hora | cuál es la hora
+hora | hora actual
+hora | sabes qué hora es
+fecha | qué día es hoy
+fecha | qué fecha es hoy
+fecha | en qué fecha estamos
+fecha | a cuánto estamos hoy
+fecha | qué día estamos
+fecha | dime la fecha
+fecha | qué día de la semana es hoy
+fecha | hoy es qué día
+
+# --- timers, alarms, stopwatch
+timer | pon un temporizador de 10 minutos
+timer | ponme un temporizador de 5 minutos
+timer | temporizador de 30 segundos
+timer | avísame en 15 minutos
+timer | avísame dentro de 20 minutos
+timer | cuenta 2 minutos
+timer | programa un temporizador de 1 hora
+timer | crea un temporizador de 3 minutos
+alarma | despiértame a las 7
+alarma | pon una alarma a las 6 y media
+alarma | ponme una alarma para las 8 de la mañana
+alarma | prográmame una alarma a las 5 de la tarde
+alarma | recuérdame en 30 minutos llamar a Ana
+alarma | recuérdame dentro de 10 minutos sacar la ropa
+alarma | qué alarmas tengo
+alarma | cuáles son mis alarmas
+alarma | cancela las alarmas
+alarma | cancela el temporizador
+alarma | borra las alarmas
+alarma | quita el temporizador
+crono | inicia el cronómetro
+crono | pon el cronómetro
+crono | arranca el cronómetro
+crono | para el cronómetro
+crono | detén el cronómetro
+crono | reinicia el cronómetro
+crono | pon el cronómetro en cero
+
+# --- weather and holidays
+clima | cómo está el clima
+clima | qué clima hace
+clima | cómo está el tiempo
+clima | qué tiempo hace hoy
+clima | va a llover hoy
+clima | va a llover
+clima | qué temperatura hace
+clima | cuántos grados hay
+clima | hace frío afuera
+clima | hace calor
+clima | necesito paraguas
+festivo | cuándo es el próximo festivo
+festivo | cuál es el próximo festivo
+festivo | hay festivo esta semana
+festivo | mañana es festivo
+festivo | cuándo es el siguiente puente
+festivo | cuántos días faltan para Navidad
+festivo | cuánto falta para Navidad
+
+# --- math, units, prices
+mate | cuánto es 15 por 12
+mate | cuánto es 20 más 35
+mate | cuánto da 100 entre 4
+mate | cuánto son 9 por 9
+mate | calcula 12 por 12
+mate | dime cuánto es 50 menos 8
+mate | cuál es el resultado de 7 por 8
+mate | cuánto es la mitad de 90
+mate | cuánto es el 20 por ciento de 300
+unidad | cuántos kilómetros son 10 millas
+unidad | convierte 5 millas a kilómetros
+unidad | cuántos metros son 3 pies
+unidad | cuántos grados fahrenheit son 20 centígrados
+unidad | pasa 100 libras a kilos
+precio | cuánto vale el dólar
+precio | a cuánto está el dólar
+precio | cuál es el precio del dólar
+precio | dólar hoy
+precio | a cuánto está el euro
+precio | cuánto vale el bitcoin
+precio | cuánto cuesta un bitcoin
+precio | cómo está el dólar
+
+# --- volume and home
+volumen | sube el volumen
+volumen | súbele al volumen
+volumen | más alto
+volumen | baja el volumen
+volumen | bájale al volumen
+volumen | más bajo
+volumen | pon el volumen al 50 por ciento
+volumen | volumen al 70
+inicio | ve al inicio
+inicio | vuelve al inicio
+inicio | regresa al inicio
+inicio | pantalla principal
+
+# --- music and radio
+musica | pon salsa
+musica | ponme salsa
+musica | pon música de salsa
+musica | quiero escuchar vallenato
+musica | pon la radio
+musica | pon una emisora
+musica | pon Tropicana
+musica | pon música
+musica | para la música
+musica | apaga la música
+musica | detén la música
+musica | quita la música
+musica | silencio
+musica | otra emisora
+musica | cambia de emisora
+musica | siguiente emisora
+
+# --- notes and lists
+lista | agrega leche a la lista de compras
+lista | añade pan a la lista de compras
+lista | pon huevos en la lista del mercado
+lista | apunta arroz en la lista de compras
+lista | qué hay en la lista de compras
+lista | léeme la lista de compras
+lista | qué tengo en la lista
+lista | borra la lista de compras
+lista | vacía la lista de compras
+nota | anota comprar el regalo de Pedro
+nota | apunta una nota llamar al médico
+nota | toma nota de revisar el correo
+nota | guarda una nota que diga pagar la luz
+nota | léeme mis notas
+nota | qué notas tengo
+nota | borra mis notas
+
+# --- fun
+chiste | cuéntame un chiste
+chiste | dime un chiste
+chiste | cuéntame otro chiste
+chiste | hazme reír
+chiste | tienes algún chiste
+chiste | quiero un chiste
+juego | juguemos al triqui
+juego | quiero jugar triqui
+juego | vamos a jugar tres en raya
+juego | juguemos adivinanzas
+juego | dime una adivinanza
+juego | abre los juegos
+juego | quiero jugar
+
+# --- information
+noticias | cuéntame las noticias
+noticias | dime las noticias
+noticias | qué noticias hay
+noticias | cuáles son las noticias de hoy
+noticias | noticias de hoy
+wiki | quién fue Simón Bolívar
+wiki | quién es Shakira
+wiki | qué es un volcán
+wiki | háblame de Colombia
+wiki | cuéntame sobre la Luna
+wiki | qué sabes de los dinosaurios
+traduccion | cómo se dice casa en inglés
+traduccion | cómo se dice hola en francés
+traduccion | traduce gracias al inglés
+traduccion | qué significa house
+traduccion | traduce hello al español
+
+# --- the board and Bug
+ayuda | qué puedes hacer
+ayuda | qué sabes hacer
+ayuda | ayúdame
+ayuda | para qué sirves
+ayuda | cuáles son tus funciones
+bateria | cuánta batería tengo
+bateria | cómo está la batería
+bateria | qué batería queda
+bateria | cuánta batería queda
+buenos | buenos días
+buenos | buenas tardes
+buenos | dame el resumen del día
+buenos | qué hay para hoy
